@@ -14,18 +14,21 @@ from rethinking_visual_sound_localization.training.model import RCGrad
 if __name__ == "__main__":
     args = {
         "num_gpus": 1,
-        "batch_size": 256,
+        "batch_size": 256, # original 256
         "learning_rate": 0.001,
         "lr_scheduler_patience": 5,
         "early_stopping_patience": 10,
         "optimizer": "Adam",
-        "num_workers": 8,
+        "num_workers": 20, # original 8
         "random_state": 2021,
         "args.debug": False,
     }
     seed_everything(args["random_state"])
+    PATH_TO_PROJECT_ROOT = "/scratch/sd5397/rethink2"
+    # PATH_TO_DATA_ROOT = "/scratch/work/marl/datasets/vggsound/data"
+    PATH_TO_DATA_ROOT = "/vast/sd5397/data/vggsound/data"
 
-    project_root = "PATH_TO_PROJECT_ROOT"
+    project_root = PATH_TO_PROJECT_ROOT
     os.makedirs(project_root, exist_ok=True)
     tensorboard_logger = TensorBoardLogger(save_dir="{}/logs/".format(project_root))
 
@@ -45,7 +48,7 @@ if __name__ == "__main__":
         max_epochs=100,
     )
     train_loader = DataLoader(
-        AudioVisualDataset(data_root="PATH_TO_DATA_ROOT", split="train", duration=5),
+        AudioVisualDataset(data_root=PATH_TO_DATA_ROOT, split="train", duration=5),
         num_workers=args["num_workers"],
         batch_size=args["batch_size"],
         pin_memory=True,
@@ -53,7 +56,7 @@ if __name__ == "__main__":
         worker_init_fn=worker_init_fn,
     )
     valid_loader = DataLoader(
-        AudioVisualDataset(data_root="PATH_TO_DATA_ROOT", split="valid", duration=5),
+        AudioVisualDataset(data_root=PATH_TO_DATA_ROOT, split="valid", duration=5),
         num_workers=args["num_workers"],
         batch_size=args["batch_size"],
         pin_memory=True,

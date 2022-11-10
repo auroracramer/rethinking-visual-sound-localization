@@ -17,7 +17,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 MODEL_URL = "https://github.com/hohsiangwu/rethinking-visual-sound-localization/releases/download/v0.1.0-alpha/rc_grad.pt"
-
+# MODEL_URL = "/scratch/sd5397/rethink2/models/epoch=14-val_loss=1.5100.ckpt"
 
 class RCGrad:
     def __init__(self):
@@ -37,6 +37,8 @@ class RCGrad:
         checkpoint = torch.hub.load_state_dict_from_url(
             MODEL_URL, map_location=device, progress=True
         )
+        # load from local file
+        # checkpoint = torch.load(MODEL_URL, map_location=device)['state_dict']
         image_encoder.load_state_dict(
             {
                 k.replace("image_encoder.", ""): v
