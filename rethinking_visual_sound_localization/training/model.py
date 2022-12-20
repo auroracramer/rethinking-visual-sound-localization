@@ -6,7 +6,7 @@ from torch import nn
 from ..modules.resnet import BasicBlock
 from ..modules.resnet import resnet18
 from ..modules.resnet import ResNetSpec
-
+from ..modules.savi import AudioCNN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -104,6 +104,7 @@ class RCGrad(LightningBase):
         self.args = args
         self.image_encoder = resnet18(modal="vision", pretrained=True)
         self.audio_encoder = ResNetSpec(
+            args['spec_config'],
             BasicBlock,
             [2, 2, 2, 2],
             pool="avgpool",
@@ -116,8 +117,35 @@ class RCGrad(LightningBase):
         self.loss_fn = CLIPLoss1D()
 
     def forward(self, audio, image):
+        # print("in","audio", audio.shape, "image", image.shape)
         audio_output = self.audio_encoder(audio.float())
         image_output = self.image_encoder(image.float())
+        # print("out", "audio", audio_output.shape, "image", image_output.shape)
+        return audio_output, image_output
+
+    def step(self, batch, batch_idx):
+        audio, images = batch
+        audio_out, image_out = self.forward(audio, images)
+        loss = self.loss_fn(audio_out, image_out)
+        return loss
+
+
+class RCGradSavi(LightningBase):
+    def __init__(
+        self,
+        args,
+    ):
+        super().__init__()
+        self.args = args
+        self.image_encoder = resnet18(modal="vision", pretrained=True)
+        self.audio_encoder = AudioCNN(args['spec_config'])
+        self.loss_fn = CLIPLoss1D()
+
+    def forward(self, audio, image):
+        # print("in","audio", audio.shape, "image", image.shape)
+        audio_output = self.audio_encoder(audio.float())
+        image_output = self.image_encoder(image.float())
+        # print("out", "audio", audio_output.shape, "image", image_output.shape)
         return audio_output, image_output
 
     def step(self, batch, batch_idx):
