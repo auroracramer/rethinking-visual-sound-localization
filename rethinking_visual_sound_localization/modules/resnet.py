@@ -6,6 +6,8 @@ import torch
 import torchaudio
 from torch import nn
 
+from rethinking_visual_sound_localization.audio_utils import SpectrogramGcc
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -80,6 +82,7 @@ class BasicBlock(nn.Module):
 class ResNetSpec(nn.Module):
     def __init__(
         self,
+        config,
         block,
         layers,
         pool="avgpool",
@@ -90,7 +93,6 @@ class ResNetSpec(nn.Module):
         norm_layer=None,
     ):
         super(ResNetSpec, self).__init__()
-        self.spectrogram = torchaudio.transforms.Spectrogram(n_fft=512, hop_length=353)
 
         self.pool = pool
         if norm_layer is None:
@@ -111,7 +113,8 @@ class ResNetSpec(nn.Module):
         self.groups = groups
         self.base_width = width_per_group
         self.conv1 = nn.Conv2d(
-            1, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
+            1 + (1 if config["STEREO"] else 0 )+ (1 if config["GCC_PHAT"] else 0),
+            self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
         )
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -186,10 +189,7 @@ class ResNetSpec(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.spectrogram(x.unsqueeze(1))
-        x = torch.log(x + 1e-7)
-        x = (x - torch.mean(x)) / (torch.std(x) + 1e-9)
-
+        # expecting input shape (C, F, T)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
