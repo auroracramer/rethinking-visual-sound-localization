@@ -9,6 +9,7 @@ import skvideo.io
 import torch
 import ffmpeg
 from pathlib import Path
+from typing import Optional
 from PIL import Image
 from torch.utils.data import IterableDataset
 from torchaudio.transforms import Spectrogram
@@ -157,7 +158,7 @@ class Ego4dDataset(IterableDataset):
             # split: str = "train",
             duration: int = 5,
             sample_rate: int = 16000,
-            chunk_duration: int = 10,
+            chunk_duration: Optional[int] = 10,
             num_channels: int = 2,
     ):
         super(AudioVisualDataset).__init__()
@@ -208,8 +209,12 @@ class Ego4dDataset(IterableDataset):
 
             num_audio_samples = self.duration * self.sample_rate
             num_video_samples = self.duration * self.fps
-            num_chunk_audio_samples = self.chunk_duration * self.sample_rate
-            full_duration = video.shape[0]
+            full_duration = video.shape[0] / self.fps
+            if self.chunk_duration:
+                num_chunk_audio_samples = self.chunk_duration * self.sample_rate
+            else:
+                # treat entire video as a chunk, regardless of length
+                num_chunk_audio_samples = video.shape[0]
             if self.duration < full_duration:
                 # split video into chunks
                 for start_audio_idx in range(0, audio.shape[0], num_chunk_audio_samples):
@@ -217,7 +222,7 @@ class Ego4dDataset(IterableDataset):
                     if start_audio_idx + num_chunk_audio_samples <= audio.shape[0]:
                         audio_offset = random.randint(
                             0, num_chunk_audio_samples - num_audio_samples
-            )
+                        )
                     else:
                         num_leftover_samples = audio.shape[0] - start_audio_idx
                         if num_leftover_samples >= num_audio_samples:
@@ -225,7 +230,7 @@ class Ego4dDataset(IterableDataset):
                             # we can still sample a window
                             audio_offset = random.randint(
                                 0, num_leftover_samples - num_audio_samples
-            )
+                        )
                         else:
                             # ignore windows that are too short
                             continue
