@@ -5,12 +5,14 @@ This script prepares audio features for audio encoders.
 
 """
 
-from typing import Optional, Type
+from typing import Optional
 
 import numpy as np
 import torch
-from torch.nn.functional import avg_pool2d
+import ffmpeg
 from torchaudio.functional import amplitude_to_DB, melscale_fbanks
+from ffmpeg import Error as FFmpegError
+
 
 
 class SpectrogramGcc(torch.nn.Module):
@@ -28,17 +30,17 @@ class SpectrogramGcc(torch.nn.Module):
         mel_scale : Triangular filter banks (fb matrix) of size (``n_freqs``, ``n_mels``)
 
     """
+    _hop_size_ms = 20
+    _win_size_ms = 40
+    _n_mels = 64
+    _include_gcc_phat = True
 
-    def __init__(self, config) -> None:
+    def __init__(self, sample_rate) -> None:
         super(SpectrogramGcc, self).__init__()
-        self._sample_rate = config["SAMPLE_RATE"]
-        spec_info = self.get_spectrogram_info(config, self._sample_rate)
-        self._hop_length = spec_info["hop_length"]
-        self._win_length = spec_info["win_length"]
-        self._n_mels = spec_info["n_mels"]
-        self._n_fft = spec_info["n_fft"]
-        self._downsample = spec_info["downsample"]
-        self._include_gcc_phat = spec_info["include_gcc_phat"]
+        self._sample_rate = sample_rate
+        self._hop_length = int(self._sample_rate * (self._hop_size_ms / 1000))
+        self._win_length = int(self._sample_rate * (self._win_size_ms / 1000))
+        self._n_fft = int(self.next_greater_power_of_2(self._win_length))
         self._window = torch.hann_window(self._win_length, device="cpu")
         self._mel_scale = melscale_fbanks(
             n_freqs=(self._n_fft // 2) + 1,
@@ -66,31 +68,15 @@ class SpectrogramGcc(torch.nn.Module):
             backend="numpy",
         )
 
-    def next_greater_power_of_2(self, x):
+    @staticmethod
+    def next_greater_power_of_2(x):
         return 2 ** (x - 1).bit_length()
-
-    def get_spectrogram_info(self, spec_config, sampling_rate):
-        win_length = int(sampling_rate * (spec_config["WIN_SIZE_MS"] / 1000.0))
-        n_mels = int(spec_config["NUM_MELS"])
-        n_fft = int(self.next_greater_power_of_2(win_length))
-        return dict(
-            sampling_rate=sampling_rate,
-            win_length=win_length,
-            hop_length=int(sampling_rate * (spec_config["HOP_SIZE_MS"] / 1000.0)),
-            n_mels=n_mels,
-            n_fft=n_fft,
-            n_freqs=(n_mels if n_mels else ((n_fft // 2) + 1)),
-            downsample=spec_config["DOWNSAMPLE"],
-            include_gcc_phat=bool(spec_config["GCC_PHAT"]),
-            n_channels=(2 + (1 if spec_config["GCC_PHAT"] else 0)),
-        )
 
     def compute_spectrogram(
             self, audio_data, win_length: int, hop_length: int, n_fft: int, n_mels: int,
             window: Optional[torch.Tensor], mel_scale: Optional[torch.Tensor],
-            downsample: Optional[int], include_gcc_phat: bool, backend: str = "torch",
+            include_gcc_phat: bool,
     ):
-        assert backend in ("torch", "numpy")
         # multichannel stft returns (..., F, T)
         # TODO: modify this according to torchaudio Spectrogram
         stft = torch.stft(
@@ -112,11 +98,6 @@ class SpectrogramGcc(torch.nn.Module):
         if mel_scale is not None:
             spectrogram = torch.matmul(spectrogram, mel_scale)
         # Optionally downsample
-        if downsample:
-            spectrogram = avg_pool2d(
-                spectrogram.unsqueeze(dim=0),
-                kernel_size=(downsample, downsample),
-            ).squeeze(dim=0)
         # Convert to decibels
         spectrogram = amplitude_to_DB(
             spectrogram,
@@ -149,13 +130,6 @@ class SpectrogramGcc(torch.nn.Module):
                     out_list.append(gcc_phat)
             gcc_phat = torch.stack(out_list, dim=0)
 
-            # Downsample
-            if downsample:
-                gcc_phat = torch.nn.functional.avg_pool2d(
-                    gcc_phat,
-                    kernel_size=(downsample, downsample),
-                )
-
             # spectrogram.shape = (C=3, T, F)
             spectrogram = torch.cat([spectrogram, gcc_phat], dim=0)
 
@@ -165,7 +139,73 @@ class SpectrogramGcc(torch.nn.Module):
 
         # output input in shape (C, F, T) for both CNN and ResNet
         spectrogram = spectrogram.permute(0, 2, 1)
-        if backend == "torch":
-            return spectrogram
-        elif backend == "numpy":
-            return spectrogram.numpy().astype(np.float32)
+        return spectrogram
+
+
+########################
+#     FFMPEG stuff     #
+########################
+
+
+def get_stream(probe, codec_type):
+    return next(
+        (
+            stream for stream in probe['streams']
+            if stream['codec_type'] == codec_type
+        ),
+        None,
+    )
+
+
+def read_ffmpeg_raw(filepath, dtype, fps=None, **output_kwargs):
+    try:
+        tf = ffmpeg.input(filepath)
+        if fps:
+            tf = tf.filter("fps", fps=fps, round="up")
+        tf = tf.output("pipe:", **output_kwargs)
+        out, err = (
+            ffmpeg
+            .input(filepath)
+            .output("pipe:", **output_kwargs)
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except FFmpegError as e:
+        print(err.stderr)
+        raise
+    res = torch.frombuffer(out, dtype=dtype).clone() # clone to load into memory
+    return res  
+
+
+def read_mp4_video_ffmpeg(filepath, probe, frame_rate):
+    video_stream = get_stream(probe, "video")
+    width = int(video_stream["width"])
+    height = int(video_stream["height"])
+    fps = video_stream["r_frame_rate"]
+    if isinstance(fps, str):
+        assert fps.count("/") == 1
+        num, den = fps.split("/")
+        fps = int(num) // int(den)
+    # https://github.com/kkroening/ffmpeg-python/blob/master/examples/README.md#convert-video-to-numpy-array
+    return read_ffmpeg_raw(
+        filepath,
+        dtype=torch.uint8,
+        fps=(frame_rate if frame_rate != fps else None),
+        format="rawvideo",
+        pix_fmt="rgb24",
+    ).reshape(-1, height, width, 3) 
+
+
+def read_mp4_audio_ffmpeg(filepath, probe, sample_rate):
+    audio_stream = get_stream(probe, "audio")
+    num_channels = int(audio_stream["channels"])
+    assert num_channels == 2, f"expected stereo audio for {filepath}"
+    # https://www.kaggle.com/code/josecarmona/ffmpeg-python-example-to-extract-audio-from-mp4
+    return read_ffmpeg_raw(
+        filepath, 
+        dtype=torch.float32,
+        format='f32le',
+        acodec='pcm_f32le',
+        ac=2,
+        ar=int(sample_rate),
+    ).reshape(-1, num_channels)
+

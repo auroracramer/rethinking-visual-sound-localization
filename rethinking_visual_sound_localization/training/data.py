@@ -1,11 +1,15 @@
 import glob
 import math
+import os
 import random
 
 import librosa
 import numpy as np
 import skvideo.io
 import torch
+import ffmpeg
+from pathlib import Path
+from typing import Optional
 from PIL import Image
 from torch.utils.data import IterableDataset
 from torchaudio.transforms import Spectrogram
@@ -15,7 +19,7 @@ from torchvision.transforms import Normalize
 from torchvision.transforms import Resize
 from torchvision.transforms import ToTensor
 
-from ..audio_utils import SpectrogramGcc
+from ..audio_utils import SpectrogramGcc, read_mp4_audio_ffmpeg, read_mp4_video_ffmpeg
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -150,58 +154,94 @@ class Ego4dDataset(IterableDataset):
     # TODO: make a similar one to vgg
     def __init__(
             self,
-            config,
             data_root,
             # split: str = "train",
             duration: int = 5,
             sample_rate: int = 16000,
+            chunk_duration: Optional[int] = 10,
+            num_channels: int = 2,
     ):
         super(AudioVisualDataset).__init__()
-        self.config = config
+        # TODO: Revisit a good value of `duration`, and if the embedding
+        #       is actually compatible the SAVi AudioCNN. Though we could
+        #       do a maxpooling/flatten type of post-processing like with L3
+        assert chunk_duration >= duration
+        assert num_channels in (1, 2)
         self.sample_rate = sample_rate
         self.duration = duration
         self.fps = 30
         self.transform = _transform(224)
-        self.preprocess = spectrogram if not self.config.STEREO else SpectrogramGcc(self.config)
+        self.num_channels = num_channels
+        self.preprocess = SpectrogramGcc(self.sample_rate) if (self.num_channels == 2) else spectrogram
         self.data_root = data_root
+        self.chunk_duration = chunk_duration
 
-        # TODO: load files
-        files = self.get_overlapping_files(self.split)
+        # TODO: How to define splits?
+        files = self.get_video_files()
         self.files = files
 
-    def get_overlapping_files(self, split):
-        audio_files = glob.glob("{}/{}/audio/*.flac".format(self.data_root, split))
-        video_files = glob.glob("{}/{}/video/*.mp4".format(self.data_root, split))
-        files = sorted(
-            list(
-                set([f.split("/")[-1].split(".")[0] for f in audio_files])
-                & set([f.split("/")[-1].split(".")[0] for f in video_files])
+    def get_video_filepath(self, video_name):
+        return os.path.join(self.data_root, f"{video_name}.mp4")
+
+    def get_video_files(self):
+        file_list = []
+        for fpath in Path(self.data_root).glob("*.mp4"):
+            metadata = ffmpeg.probe(str(fpath))
+            num_channels = None
+            for stream in metadata["streams"]:
+                if stream["codec_type"] == "audio":
+                    if num_channels is not None:
+                        raise ValueError(
+                            f"Found more than one audio stream for {str(fpath)}"
             )
-        )
-        return files
+                    num_channels = int(stream["channels"])
+            if num_channels == self.num_channels:
+                file_list.append(fpath.stem)
+
+        return file_list
 
     def __iter__(self):
         for f in self.files:
-            # TODO: filter stereo audio here
-            audio, _ = librosa.load(
-                "{}/{}/audio/{}.flac".format(self.data_root, self.split, f),
-                sr=self.sample_rate,
-            )
-            video = skvideo.io.vread(
-                "{}/{}/video/{}.mp4".format(self.data_root, self.split, f)
-            )
+            fpath = self.get_video_filepath(f)
+            probe = ffmpeg.probe(fpath)
+            video = read_mp4_video_ffmpeg(fpath, probe, frame_rate=self.fps)
+            audio = read_mp4_audio_ffmpeg(fpath, probe, sample_rate=self.sample_rate)
+
             num_audio_samples = self.duration * self.sample_rate
             num_video_samples = self.duration * self.fps
-            if self.duration < 10:
-                if (
-                        audio.shape[0] >= num_audio_samples  # TODO: change the dimension indicator
-                        and video.shape[0] >= num_video_samples
-                ):
-                    audio_index = random.randint(0, audio.shape[0] - num_audio_samples)
+            full_duration = video.shape[0] / self.fps
+            if self.chunk_duration:
+                num_chunk_audio_samples = self.chunk_duration * self.sample_rate
+            else:
+                # treat entire video as a chunk, regardless of length
+                num_chunk_audio_samples = video.shape[0]
+            if self.duration < full_duration:
+                # split video into chunks
+                for start_audio_idx in range(0, audio.shape[0], num_chunk_audio_samples):
+                    # sample a random window within the chunk
+                    if start_audio_idx + num_chunk_audio_samples <= audio.shape[0]:
+                        audio_offset = random.randint(
+                            0, num_chunk_audio_samples - num_audio_samples
+                        )
+                    else:
+                        num_leftover_samples = audio.shape[0] - start_audio_idx
+                        if num_leftover_samples >= num_audio_samples:
+                            # if we have at least a window's worth of samples,
+                            # we can still sample a window
+                            audio_offset = random.randint(
+                                0, num_leftover_samples - num_audio_samples
+                        )
+                        else:
+                            # ignore windows that are too short
+                            continue
+                    
+                    audio_index = start_audio_idx + audio_offset
+                    # get the corresponding video index
                     video_index = int(
                         np.floor((audio_index / self.sample_rate) * self.fps)
                     )
                     audio_slice = slice(audio_index, audio_index + num_audio_samples)
+                    # take the center image frame of the window
                     video_slice = slice(
                         video_index + num_video_samples // 2,
                         video_index + num_video_samples // 2 + 1,
@@ -210,16 +250,18 @@ class Ego4dDataset(IterableDataset):
                             audio[audio_slice].shape[0] == num_audio_samples
                             and video[video_slice, :].shape[0] == 1
                     ):
-                        yield self.preprocess(audio[audio_slice]), self.transform(
-                            Image.fromarray(video[video_slice, :, :, :][0])
+                        yield (
+                            self.preprocess(audio[audio_slice]),
+                            self.transform(video[video_slice, :, :, :][0]),
                         )
-            elif self.duration == 10:
+            elif self.duration == full_duration:
                 if (
                         audio.shape[0] == num_audio_samples
                         and video.shape[0] == num_video_samples
                 ):
-                    yield self.preprocess(audio), self.transform(
-                        Image.fromarray(video[video.shape[0] // 2, :, :, :])
+                    yield (
+                        self.preprocess(audio),
+                        self.transform(video[video.shape[0] // 2, :, :, :]),
                     )
             else:
                 assert False
