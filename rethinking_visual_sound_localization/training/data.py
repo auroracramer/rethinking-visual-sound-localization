@@ -8,6 +8,7 @@ import numpy as np
 import skvideo.io
 import torch
 import ffmpeg
+from math import ceil
 from pathlib import Path
 from typing import Optional
 from PIL import Image
@@ -151,15 +152,17 @@ class Ego4dDataset(IterableDataset):
         Dataset for loading EGO4D with stereo audio
     """
 
-    # TODO: make a similar one to vgg
     def __init__(
             self,
             data_root,
-            # split: str = "train",
+            split: str = "train",
             duration: int = 5,
             sample_rate: int = 16000,
             chunk_duration: Optional[int] = 10,
             num_channels: int = 2,
+            random_seed: int = 1337,
+            valid_ratio: float = 0.1,
+            test_ratio: float = 0.1,
     ):
         super(AudioVisualDataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
@@ -173,19 +176,37 @@ class Ego4dDataset(IterableDataset):
         self.transform = _transform(224)
         self.num_channels = num_channels
         self.preprocess = SpectrogramGcc(self.sample_rate) if (self.num_channels == 2) else spectrogram
-        self.data_root = data_root
+        self.data_root = Path(data_root)
         self.chunk_duration = chunk_duration
+        self.split = split
 
-        # TODO: How to define splits?
         files = self.get_video_files()
-        self.files = files
+        # Set up splits
+        random.seed(random_seed)
+        random.shuffle(files)
+        num_files = len(files)
+        num_valid = ceil(num_files * valid_ratio)
+        num_test = ceil(num_files * test_ratio)
+        num_train = num_files - (num_valid + num_test)
+        if split == "train":
+            start_idx = 0
+            end_idx = start_idx + num_train
+        elif split == "valid":
+            start_idx = num_train
+            end_idx = start_idx + num_valid
+        elif split == "test":
+            start_idx = num_train + num_valid
+            end_idx = start_idx + num_test
+        else:
+            assert False
+        self.files = files[start_idx:end_idx]
 
     def get_video_filepath(self, video_name):
         return os.path.join(self.data_root, f"{video_name}.mp4")
 
     def get_video_files(self):
         file_list = []
-        for fpath in Path(self.data_root).glob("*.mp4"):
+        for fpath in self.data_root.glob("*.mp4"):
             metadata = ffmpeg.probe(str(fpath))
             num_channels = None
             for stream in metadata["streams"]:
@@ -197,8 +218,8 @@ class Ego4dDataset(IterableDataset):
                     num_channels = int(stream["channels"])
             if num_channels == self.num_channels:
                 file_list.append(fpath.stem)
-
-        return file_list
+        # Return in sorted order for reproducibility
+        return sorted(file_list, key=lambda x: x.relative_to(self.data_root))
 
     def __iter__(self):
         for f in self.files:
