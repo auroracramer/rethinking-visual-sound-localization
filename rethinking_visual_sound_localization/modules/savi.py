@@ -32,9 +32,11 @@ class AudioCNN(nn.Module):
 
     """
 
+    embedding_size = 128
+
     def __init__(self, feature_shape):
         super(AudioCNN, self).__init__()
-        num_freqs, num_time, num_channels = feature_shape
+        num_channels, num_time, num_freqs = feature_shape
         cnn_dims = (num_freqs, num_time)
         if cnn_dims[0] < 30 or cnn_dims[1] < 30:
             self._cnn_layers_kernel_size = [(5, 5), (3, 3), (3, 3)]
@@ -141,13 +143,12 @@ class VisualCNN(nn.Module):
         observation_space: The observation_space of the agent
         output_size: The size of the embedding vector
     """
+    embedding_size = 128
 
     # NOTE: This isn't fully one to one with Ego4D either because we don't have
     #       any depth information... but what can we do lol
-    def __init__(self, output_size):
+    def __init__(self):
         super().__init__()
-        self._output_size = output_size
-
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
 
@@ -191,7 +192,7 @@ class VisualCNN(nn.Module):
             ),
             #  nn.ReLU(True),
             Flatten(),
-            nn.Linear(64 * cnn_dims[0] * cnn_dims[1], output_size),
+            nn.Linear(64 * cnn_dims[0] * cnn_dims[1], self.embedding_size),
             nn.ReLU(True),
         )
 

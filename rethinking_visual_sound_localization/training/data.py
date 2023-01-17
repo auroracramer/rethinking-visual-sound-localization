@@ -213,7 +213,7 @@ class Ego4DDataset(IterableDataset):
             if num_channels == self.num_channels:
                 file_list.append(fpath.stem)
         # Return in sorted order for reproducibility
-        return sorted(file_list, key=lambda x: x.relative_to(self.data_root))
+        return sorted(file_list)
 
     def __iter__(self):
         for f in self.files:
@@ -249,7 +249,7 @@ class Ego4DDataset(IterableDataset):
                         else:
                             # ignore windows that are too short
                             continue
-                    
+
                     audio_index = start_audio_idx + audio_offset
                     # get the corresponding video index
                     video_index = int(

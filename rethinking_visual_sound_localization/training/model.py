@@ -6,7 +6,7 @@ from torch import nn
 from ..modules.resnet import BasicBlock
 from ..modules.resnet import resnet18
 from ..modules.resnet import ResNetSpec
-from ..modules.savi import AudioCNN
+from ..modules.savi import AudioCNN, VisualCNN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -96,8 +96,9 @@ class LightningBase(pl.LightningModule):
 
 
 class RCGrad(LightningBase):
-    def __init__(self):
+    def __init__(self, args):
         super().__init__()
+        self.args = args
         self.image_encoder = resnet18(modal="vision", pretrained=True)
         self.audio_encoder = ResNetSpec(
             BasicBlock,
@@ -126,9 +127,10 @@ class RCGrad(LightningBase):
 
 
 class RCGradSavi(LightningBase):
-    def __init__(self, feature_shape):
+    def __init__(self, args, feature_shape):
         super().__init__()
-        self.image_encoder = resnet18(modal="vision", pretrained=True)
+        self.args=args
+        self.image_encoder = VisualCNN() #resnet18(modal="vision", pretrained=True)
         self.audio_encoder = AudioCNN(feature_shape)
         self.loss_fn = CLIPLoss1D()
 
