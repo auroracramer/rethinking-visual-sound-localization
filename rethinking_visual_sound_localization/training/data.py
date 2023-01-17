@@ -8,7 +8,6 @@ import numpy as np
 import skvideo.io
 import torch
 import ffmpeg
-from math import ceil
 from pathlib import Path
 from typing import Optional
 from PIL import Image
@@ -147,7 +146,7 @@ class AudioVisualDataset(IterableDataset):
                 assert False
 
 
-class Ego4dDataset(IterableDataset):
+class Ego4DDataset(IterableDataset):
     """
         Dataset for loading EGO4D with stereo audio
     """
@@ -162,9 +161,8 @@ class Ego4dDataset(IterableDataset):
             num_channels: int = 2,
             random_seed: int = 1337,
             valid_ratio: float = 0.1,
-            test_ratio: float = 0.1,
     ):
-        super(AudioVisualDataset).__init__()
+        super(Ego4DDataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
         #       is actually compatible the SAVi AudioCNN. Though we could
         #       do a maxpooling/flatten type of post-processing like with L3
@@ -185,18 +183,14 @@ class Ego4dDataset(IterableDataset):
         random.seed(random_seed)
         random.shuffle(files)
         num_files = len(files)
-        num_valid = ceil(num_files * valid_ratio)
-        num_test = ceil(num_files * test_ratio)
-        num_train = num_files - (num_valid + num_test)
+        num_valid = int(num_files * valid_ratio)
+        num_train = num_files - num_valid
         if split == "train":
             start_idx = 0
             end_idx = start_idx + num_train
         elif split == "valid":
             start_idx = num_train
             end_idx = start_idx + num_valid
-        elif split == "test":
-            start_idx = num_train + num_valid
-            end_idx = start_idx + num_test
         else:
             assert False
         self.files = files[start_idx:end_idx]

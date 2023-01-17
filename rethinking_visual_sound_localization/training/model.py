@@ -96,15 +96,10 @@ class LightningBase(pl.LightningModule):
 
 
 class RCGrad(LightningBase):
-    def __init__(
-        self,
-        args,
-    ):
+    def __init__(self):
         super().__init__()
-        self.args = args
         self.image_encoder = resnet18(modal="vision", pretrained=True)
         self.audio_encoder = ResNetSpec(
-            args['spec_config'],
             BasicBlock,
             [2, 2, 2, 2],
             pool="avgpool",
@@ -131,14 +126,10 @@ class RCGrad(LightningBase):
 
 
 class RCGradSavi(LightningBase):
-    def __init__(
-        self,
-        args,
-    ):
+    def __init__(self, feature_shape):
         super().__init__()
-        self.args = args
         self.image_encoder = resnet18(modal="vision", pretrained=True)
-        self.audio_encoder = AudioCNN(args['spec_config'])
+        self.audio_encoder = AudioCNN(feature_shape)
         self.loss_fn = CLIPLoss1D()
 
     def forward(self, audio, image):

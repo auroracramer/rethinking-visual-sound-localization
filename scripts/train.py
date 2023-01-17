@@ -8,9 +8,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torchsummary import summary
 
-from rethinking_visual_sound_localization.training.data import AudioVisualDataset
+from rethinking_visual_sound_localization.training.data import AudioVisualDataset, Ego4DDataset
 from rethinking_visual_sound_localization.training.data import worker_init_fn
-from rethinking_visual_sound_localization.training.model import RCGrad
+from rethinking_visual_sound_localization.training.model import RCGrad, RCGradSavi
 
 if __name__ == "__main__":
     # data source location
@@ -52,20 +52,36 @@ if __name__ == "__main__":
 
     # assign datasets
     if dataset == ego:
-        # TODO
         # train_dataset =
-        val_dataset = None
+        train_dataset = Ego4DDataset(
+            config=args['spec_config'],
+            data_root=args['path_to_data_root'],
+            split="train",
+            duration=5,
+            sample_rate=sr,
+        )
+        val_dataset = Ego4DDataset(
+            config=args['spec_config'],
+            data_root=args['path_to_data_root'],
+            split="valid",
+            duration=5,
+            sample_rate=sr,
+        )
     elif dataset == vgg:
-        train_dataset = AudioVisualDataset(config=args['spec_config'],
-                                           data_root=args['path_to_data_root'],
-                                           split="train",
-                                           duration=5,
-                                           sample_rate=sr)
-        val_dataset = AudioVisualDataset(config=args['spec_config'],
-                                         data_root=args['path_to_data_root'],
-                                         split="valid",
-                                         duration=5,
-                                         sample_rate=sr)
+        train_dataset = AudioVisualDataset(
+            config=args['spec_config'],
+            data_root=args['path_to_data_root'],
+            split="train",
+            duration=5,
+            sample_rate=sr,
+        )
+        val_dataset = AudioVisualDataset(
+            config=args['spec_config'],
+            data_root=args['path_to_data_root'],
+            split="valid",
+            duration=5,
+            sample_rate=sr,
+        )
     else:
         raise Exception("Not Implemented")
 
@@ -81,21 +97,28 @@ if __name__ == "__main__":
         accelerator="dp",
         max_epochs=100,
     )
-    train_loader = DataLoader(train_dataset,
-                              num_workers=args["num_workers"],
-                              batch_size=args["batch_size"],
-                              pin_memory=True,
-                              drop_last=True,
-                              worker_init_fn=worker_init_fn,
-                              )
-    valid_loader = DataLoader(val_dataset,
-                              num_workers=args["num_workers"],
-                              batch_size=args["batch_size"],
-                              pin_memory=True,
-                              drop_last=False,
-                              worker_init_fn=worker_init_fn,
-                              )
+    train_loader = DataLoader(
+        train_dataset,
+        num_workers=args["num_workers"],
+        batch_size=args["batch_size"],
+        pin_memory=True,
+        drop_last=True,
+        worker_init_fn=worker_init_fn,
+    )
+    valid_loader = DataLoader(
+        val_dataset,
+        num_workers=args["num_workers"],
+        batch_size=args["batch_size"],
+        pin_memory=True,
+        drop_last=False,
+        worker_init_fn=worker_init_fn,
+    )
 
-    rc_grad = RCGrad(args)
+    if dataset == ego:
+        rc_grad = RCGradSavi(train_dataset.preprocess.feature_shape)
+    elif dataset == vgg:
+        rc_grad = RCGrad()
+    else:
+        raise Exception("Not Implemented")
     # print("rcgrad", rc_grad)
     trainer.fit(rc_grad, train_loader, valid_loader)

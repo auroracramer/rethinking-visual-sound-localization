@@ -14,7 +14,6 @@ from torchaudio.functional import amplitude_to_DB, melscale_fbanks
 from ffmpeg import Error as FFmpegError
 
 
-
 class SpectrogramGcc(torch.nn.Module):
     r"""Create a spectrogram+gcc feature from a single or a batch of multi-channel audio in shape (..., time).
 
@@ -52,7 +51,6 @@ class SpectrogramGcc(torch.nn.Module):
             norm=None,
         ).to(device="cpu", dtype=torch.float32) if self._n_mels else None
         self.feature_shape = self.forward(np.ones((2, self._sample_rate))).shape
-
 
     def forward(self, waveform):
         return self.compute_spectrogram(
