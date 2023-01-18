@@ -14,6 +14,9 @@ from torchaudio.functional import amplitude_to_DB, melscale_fbanks
 from ffmpeg import Error as FFmpegError
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class SpectrogramGcc(torch.nn.Module):
     r"""Create a spectrogram+gcc feature from a single or a batch of multi-channel audio in shape (..., time).
 
@@ -40,17 +43,26 @@ class SpectrogramGcc(torch.nn.Module):
         self._hop_length = int(self._sample_rate * (self._hop_size_ms / 1000))
         self._win_length = int(self._sample_rate * (self._win_size_ms / 1000))
         self._n_fft = int(self.next_greater_power_of_2(self._win_length))
-        self._window = torch.hann_window(self._win_length, device="cpu")
-        self._mel_scale = melscale_fbanks(
-            n_freqs=(self._n_fft // 2) + 1,
-            f_min=0,
-            f_max=self._sample_rate / 2,  # nyquist
-            n_mels=self._n_mels,
-            sample_rate=self._sample_rate,
-            mel_scale="htk",
-            norm=None,
-        ).to(device="cpu", dtype=torch.float32) if self._n_mels else None
-        self.feature_shape = self.forward(np.ones((2, self._sample_rate))).shape
+
+        self.register_buffer(
+            "_window",
+            torch.hann_window(self._win_length, device=device).to(dtype=torch.float32),
+            persisent=False,
+        )
+        self.register_buffer(
+            "_mel_scale",
+            melscale_fbanks(
+                n_freqs=(self._n_fft // 2) + 1,
+                f_min=0,
+                f_max=self._sample_rate / 2,  # nyquist
+                n_mels=self._n_mels,
+                sample_rate=self._sample_rate,
+                mel_scale="htk",
+                norm=None,
+            ).to(device=device, dtype=torch.float32),
+            persisent=False,
+        )
+        self.feature_shape = tuple(self.forward(np.ones((2, self._sample_rate))).shape)
 
     def forward(self, waveform):
         return self.compute_spectrogram(
@@ -63,7 +75,6 @@ class SpectrogramGcc(torch.nn.Module):
             mel_scale=self._mel_scale,
             downsample=self._downsample,
             include_gcc_phat=self._include_gcc_phat,
-            backend="numpy",
         )
 
     @staticmethod
@@ -76,16 +87,15 @@ class SpectrogramGcc(torch.nn.Module):
             include_gcc_phat: bool,
     ):
         # multichannel stft returns (..., F, T)
-        # TODO: modify this according to torchaudio Spectrogram
         stft = torch.stft(
-                    input=torch.tensor(audio_data, device='cpu', dtype=torch.float32),
+                    input=torch.tensor(audio_data, device=device, dtype=torch.float32),
                     win_length=win_length,
                     hop_length=hop_length,
                     n_fft=n_fft,
                     center=True,
                     window=(
                         window if window is not None
-                        else torch.hann_window(win_length, device="cpu")
+                        else torch.hann_window(win_length, device=device)
                     ),
                     pad_mode="constant",  # constant for zero padding
                     return_complex=True,
