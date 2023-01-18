@@ -25,7 +25,6 @@ class SpectrogramGcc(torch.nn.Module):
         hop_length (int or None, optional): Length of hop between STFT windows.
         n_mels (int): Number of mel filterbanks
         n_fft (int, optional): Size of FFT, creates ``n_fft // 2 + 1`` bins.
-        downsample (int): Average pool kernel size
         include_gcc_phat (bool) : Whether to concatenate gcc phat after spectrogram
         window: (Callable[..., Tensor], optional): A function to create a window tensor
             that is applied/multiplied to each frame/window. (Default: ``torch.hann_window``)
@@ -73,7 +72,6 @@ class SpectrogramGcc(torch.nn.Module):
             n_mels=self._n_mels,
             window=self._window,
             mel_scale=self._mel_scale,
-            downsample=self._downsample,
             include_gcc_phat=self._include_gcc_phat,
         )
 
@@ -99,13 +97,12 @@ class SpectrogramGcc(torch.nn.Module):
                     ),
                     pad_mode="constant",  # constant for zero padding
                     return_complex=True,
-                )
+                ).transpose(-1, -2)
         # Compute power spectrogram
         spectrogram = (torch.abs(stft) ** 2.0).to(dtype=torch.float32)
         # Apply the mel-scale filter to the power spectrogram
         if mel_scale is not None:
             spectrogram = torch.matmul(spectrogram, mel_scale)
-        # Optionally downsample
         # Convert to decibels
         spectrogram = amplitude_to_DB(
             spectrogram,
@@ -181,7 +178,7 @@ def read_ffmpeg_raw(filepath, dtype, fps=None, **output_kwargs):
         print(err.stderr)
         raise
     res = torch.frombuffer(out, dtype=dtype).clone() # clone to load into memory
-    return res  
+    return res
 
 
 def read_mp4_video_ffmpeg(filepath, probe, frame_rate):
@@ -200,7 +197,7 @@ def read_mp4_video_ffmpeg(filepath, probe, frame_rate):
         fps=(frame_rate if frame_rate != fps else None),
         format="rawvideo",
         pix_fmt="rgb24",
-    ).reshape(-1, height, width, 3) 
+    ).reshape(-1, height, width, 3)
 
 
 def read_mp4_audio_ffmpeg(filepath, probe, sample_rate):
@@ -209,7 +206,7 @@ def read_mp4_audio_ffmpeg(filepath, probe, sample_rate):
     assert num_channels == 2, f"expected stereo audio for {filepath}"
     # https://www.kaggle.com/code/josecarmona/ffmpeg-python-example-to-extract-audio-from-mp4
     return read_ffmpeg_raw(
-        filepath, 
+        filepath,
         dtype=torch.float32,
         format='f32le',
         acodec='pcm_f32le',

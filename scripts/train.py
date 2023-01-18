@@ -15,7 +15,8 @@ from rethinking_visual_sound_localization.training.model import RCGrad, RCGradSa
 if __name__ == "__main__":
     # data source location
     vgg = "/vast/sd5397/data/vggsound/data"
-    ego = "/vast/work/public/ml-datasets/ego4d/v1"
+    #ego = "/vast/work/public/ml-datasets/ego4d/v1"
+    ego = "/vast/work/public/ml-datasets/ego4d/v1/full_scale"
 
     args = {
         "num_gpus": 1,
@@ -27,7 +28,7 @@ if __name__ == "__main__":
         "num_workers": 20,  # original 8
         "random_state": 2021,
         "args.debug": False,
-        "path_to_project_root": "/scratch/sd5397/rethink_ego",
+        "path_to_project_root": "/scratch/jtc440/rethink_ego",
         "path_to_data_root": ego,
         "spec_config": {
             "STEREO": True,
@@ -54,14 +55,12 @@ if __name__ == "__main__":
     if dataset == ego:
         # train_dataset =
         train_dataset = Ego4DDataset(
-            config=args['spec_config'],
             data_root=args['path_to_data_root'],
             split="train",
             duration=5,
             sample_rate=sr,
         )
         val_dataset = Ego4DDataset(
-            config=args['spec_config'],
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
@@ -69,14 +68,12 @@ if __name__ == "__main__":
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(
-            config=args['spec_config'],
             data_root=args['path_to_data_root'],
             split="train",
             duration=5,
             sample_rate=sr,
         )
         val_dataset = AudioVisualDataset(
-            config=args['spec_config'],
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
@@ -115,9 +112,9 @@ if __name__ == "__main__":
     )
 
     if dataset == ego:
-        rc_grad = RCGradSavi(train_dataset.preprocess.feature_shape)
+        rc_grad = RCGradSavi(args, train_dataset.preprocess.feature_shape)
     elif dataset == vgg:
-        rc_grad = RCGrad()
+        rc_grad = RCGrad(args)
     else:
         raise Exception("Not Implemented")
     # print("rcgrad", rc_grad)

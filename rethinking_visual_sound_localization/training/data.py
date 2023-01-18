@@ -214,7 +214,7 @@ class Ego4DDataset(IterableDataset):
             if num_channels == self.num_channels:
                 file_list.append(fpath.stem)
         # Return in sorted order for reproducibility
-        return sorted(file_list, key=lambda x: x.relative_to(self.data_root))
+        return sorted(file_list)
 
     def __iter__(self):
         for f in self.files:
@@ -255,7 +255,6 @@ class Ego4DDataset(IterableDataset):
                     ).num_channels
                     assert num_channels == 2, (
                         f"{fpath} must have two audio channels"
-                    )
 
                     # add output streams
                     streamer.add_basic_audio_stream(
