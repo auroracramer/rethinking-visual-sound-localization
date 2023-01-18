@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 from PIL import Image
 from torch.utils.data import IterableDataset
+from torchaudio.io import StreamReader
 from torchaudio.transforms import Spectrogram
 from torchvision.transforms import CenterCrop
 from torchvision.transforms import Compose
@@ -219,65 +220,88 @@ class Ego4DDataset(IterableDataset):
         for f in self.files:
             fpath = self.get_video_filepath(f)
             probe = ffmpeg.probe(fpath)
-            video = read_mp4_video_ffmpeg(fpath, probe, frame_rate=self.fps)
-            audio = read_mp4_audio_ffmpeg(fpath, probe, sample_rate=self.sample_rate)
 
             num_audio_samples = self.duration * self.sample_rate
             num_video_samples = self.duration * self.fps
-            full_duration = video.shape[0] / self.fps
-            if self.chunk_duration:
-                num_chunk_audio_samples = self.chunk_duration * self.sample_rate
-            else:
-                # treat entire video as a chunk, regardless of length
-                num_chunk_audio_samples = video.shape[0]
+            # Take minimum duration of streams
+            full_duration = min(stream['duration'] for stream in probe['streams'])
+
             if self.duration < full_duration:
-                # split video into chunks
-                for start_audio_idx in range(0, audio.shape[0], num_chunk_audio_samples):
+                sample_uniform = np.random.default_rng().uniform
+                audio_seek_list = []
+                # split video into chunks and sample a window from each
+                for start_ts in np.arange(0.0, full_duration, step=self.chunk_duration):
                     # sample a random window within the chunk
-                    if start_audio_idx + num_chunk_audio_samples <= audio.shape[0]:
-                        audio_offset = random.randint(
-                            0, num_chunk_audio_samples - num_audio_samples
-                        )
+                    if start_ts + self.chunk_duration <= full_duration:
+                        audio_offset = sample_uniform(0.0, self.chunk_duration - self.duration)
                     else:
-                        num_leftover_samples = audio.shape[0] - start_audio_idx
-                        if num_leftover_samples >= num_audio_samples:
+                        leftover_duration = full_duration - start_ts
+                        if leftover_duration >= self.duration:
                             # if we have at least a window's worth of samples,
                             # we can still sample a window
-                            audio_offset = random.randint(
-                                0, num_leftover_samples - num_audio_samples
-                        )
+                            audio_offset = sample_uniform(0.0, leftover_duration - self.duration)
                         else:
                             # ignore windows that are too short
                             continue
-                    
-                    audio_index = start_audio_idx + audio_offset
-                    # get the corresponding video index
-                    video_index = int(
-                        np.floor((audio_index / self.sample_rate) * self.fps)
+
+                    audio_ts = start_ts + audio_offset
+                    audio_seek_list.append(audio_ts)
+
+                # Stream file to only load the relevant chunk at at time
+                with open(fpath, 'rb') as vfile:
+                    streamer = StreamReader(vfile)
+                    num_channels = streamer.get_src_stream_info(
+                        streamer.default_audio_stream
+                    ).num_channels
+                    assert num_channels == 2, (
+                        f"{fpath} must have two audio channels"
                     )
-                    audio_slice = slice(audio_index, audio_index + num_audio_samples)
-                    # take the center image frame of the window
-                    video_slice = slice(
-                        video_index + num_video_samples // 2,
-                        video_index + num_video_samples // 2 + 1,
+
+                    # add output streams
+                    streamer.add_basic_audio_stream(
+                        frames_per_chunk=num_audio_samples,
+                        sample_rate=self.sample_rate,
+                        format='fltp',
                     )
-                    if (
-                            audio[audio_slice].shape[0] == num_audio_samples
-                            and video[video_slice, :].shape[0] == 1
-                    ):
-                        yield (
-                            self.preprocess(audio[audio_slice]),
-                            self.transform(video[video_slice, :, :, :][0]),
-                        )
+                    streamer.add_basic_video_stream(
+                        frames_per_chunk=num_video_samples,
+                        frame_rate=self.fps,
+                        format="rgb24"
+                    )
+
+                    # Extract the sampled window/frame for each time
+                    for audio_ts in audio_seek_list:
+                        # Seek to start of audio window
+                        streamer.seek(audio_ts)
+                        # Get corresponding audio and video window
+                        stream = streamer.stream()
+                        # audio.shape = (frames, channels)
+                        # video.shape = (frames, channels, height, width)
+                        audio, video = next(stream)
+                        stream = None # help out GC with clearing iterator
+
+                        assert audio.shape == (num_audio_samples, 2)
+                        assert video.shape[:2] == (num_video_samples, 3)
+                        # Get center frame of video
+                        video = video[video.shape[0] // 2]
+
+                        yield self.preprocess(audio), self.transform(video)
+
             elif self.duration == full_duration:
-                if (
-                        audio.shape[0] == num_audio_samples
-                        and video.shape[0] == num_video_samples
-                ):
-                    yield (
-                        self.preprocess(audio),
-                        self.transform(video[video.shape[0] // 2, :, :, :]),
-                    )
+                # We can just load the whole ding dang thing
+                # NOTE: Right now I'm assuming that we probably won't hit this case
+                #       and if we do, that loading 5 seconds of audio and then
+                #       5 seconds of video won't be a big deal. But if that
+                #       isn't true, you'll need to replace this with stream
+                #       version
+                video = read_mp4_video_ffmpeg(fpath, probe, frame_rate=self.fps)
+                audio = read_mp4_audio_ffmpeg(fpath, probe, sample_rate=self.sample_rate)
+                assert audio.shape == (num_audio_samples, 2)
+                assert video.shape[:2] == (num_video_samples, 3)
+                # Get center frame of video
+                video = video[video.shape[0] // 2, :, :, :]
+
+                yield self.preprocess(audio), self.transform(video)
             else:
                 assert False
 
