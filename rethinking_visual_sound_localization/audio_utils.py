@@ -46,7 +46,7 @@ class SpectrogramGcc(torch.nn.Module):
         self.register_buffer(
             "_window",
             torch.hann_window(self._win_length, device=device).to(dtype=torch.float32),
-            persisent=False,
+            persistent=False,
         )
         self.register_buffer(
             "_mel_scale",
@@ -59,7 +59,7 @@ class SpectrogramGcc(torch.nn.Module):
                 mel_scale="htk",
                 norm=None,
             ).to(device=device, dtype=torch.float32),
-            persisent=False,
+            persistent=False,
         )
         self.feature_shape = tuple(self.forward(np.ones((2, self._sample_rate))).shape)
 
