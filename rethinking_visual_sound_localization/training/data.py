@@ -255,6 +255,7 @@ class Ego4DDataset(IterableDataset):
                     ).num_channels
                     assert num_channels == 2, (
                         f"{fpath} must have two audio channels"
+                    )
 
                     # add output streams
                     streamer.add_basic_audio_stream(
