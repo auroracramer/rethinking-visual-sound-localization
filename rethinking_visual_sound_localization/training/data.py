@@ -228,7 +228,6 @@ class Ego4DDataset(IterableDataset):
 
             if self.duration < full_duration:
                 sample_uniform = np.random.default_rng().uniform
-                audio_seek_list = []
                 # split video into chunks and sample a window from each
                 for start_ts in np.arange(0.0, full_duration, step=self.chunk_duration):
                     # sample a random window within the chunk
@@ -245,32 +244,36 @@ class Ego4DDataset(IterableDataset):
                             continue
 
                     audio_ts = start_ts + audio_offset
-                    audio_seek_list.append(audio_ts)
 
-                # Stream file to only load the relevant chunk at at time
-                with open(fpath, 'rb') as vfile:
-                    streamer = StreamReader(vfile)
-                    num_channels = streamer.get_src_stream_info(
-                        streamer.default_audio_stream
-                    ).num_channels
-                    assert num_channels == 2, (
-                        f"{fpath} must have two audio channels"
-                    )
+                    # Stream file to only load the relevant chunk at at time
+                    # NOTE: We're encountering lots of OOMs despite streaming,
+                    #       so it may be the case that it has to keep the 
+                    #       decoder state in memory which maybe is a lot.
+                    #       So instead of keeping the file open and seeking
+                    #       in order, we'll just reopen the file and reseek for
+                    #       each time. It's slower but uses less memory at least
+                    with open(fpath, 'rb') as vfile:
+                        streamer = StreamReader(vfile)
+                        num_channels = streamer.get_src_stream_info(
+                            streamer.default_audio_stream
+                        ).num_channels
+                        assert num_channels == 2, (
+                            f"{fpath} must have two audio channels"
+                        )
 
-                    # add output streams
-                    streamer.add_basic_audio_stream(
-                        frames_per_chunk=num_audio_samples,
-                        sample_rate=self.sample_rate,
-                        format='fltp',
-                    )
-                    streamer.add_basic_video_stream(
-                        frames_per_chunk=num_video_samples,
-                        frame_rate=self.fps,
-                        format="rgb24"
-                    )
+                        # add output streams
+                        streamer.add_basic_audio_stream(
+                            frames_per_chunk=num_audio_samples,
+                            sample_rate=self.sample_rate,
+                            format='fltp',
+                        )
+                        streamer.add_basic_video_stream(
+                            frames_per_chunk=num_video_samples,
+                            frame_rate=self.fps,
+                            format="rgb24"
+                        )
 
-                    # Extract the sampled window/frame for each time
-                    for audio_ts in audio_seek_list:
+                        ## Extract the sampled window/frame for each time
                         # Seek to start of audio window
                         streamer.seek(audio_ts)
                         # Get corresponding audio and video window
@@ -278,14 +281,14 @@ class Ego4DDataset(IterableDataset):
                         # audio.shape = (frames, channels)
                         # video.shape = (frames, channels, height, width)
                         audio, video = next(stream)
-                        stream = None # help out GC with clearing iterator
 
-                        assert audio.shape == (num_audio_samples, 2)
-                        assert video.shape[:2] == (num_video_samples, 3)
-                        # Get center frame of video
-                        video = video[video.shape[0] // 2]
+                    streamer = stream = None # help out GC with clearing iterator
+                    assert audio.shape == (num_audio_samples, 2)
+                    assert video.shape[:2] == (num_video_samples, 3)
+                    # Get center frame of video
+                    video = video[video.shape[0] // 2]
 
-                        yield self.preprocess(audio), self.transform(video)
+                    yield self.preprocess(audio), self.transform(video)
 
             elif self.duration == full_duration:
                 # We can just load the whole ding dang thing
