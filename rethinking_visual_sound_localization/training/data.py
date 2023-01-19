@@ -11,6 +11,8 @@ import ffmpeg
 from pathlib import Path
 from typing import Optional
 from PIL import Image
+from operator import itemgetter
+from itertools import groupby
 from torch.utils.data import IterableDataset
 from torchaudio.io import StreamReader
 from torchaudio.transforms import Spectrogram
@@ -162,6 +164,7 @@ class Ego4DDataset(IterableDataset):
             num_channels: int = 2,
             random_seed: int = 1337,
             valid_ratio: float = 0.1,
+            silence_threshold: float = 0.1,
     ):
         super(Ego4DDataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
@@ -181,6 +184,7 @@ class Ego4DDataset(IterableDataset):
         self.data_root = Path(data_root)
         self.chunk_duration = chunk_duration
         self.split = split
+        self.silence_threshold = silence_threshold
 
         files = self.get_video_files()
         # Set up splits
@@ -218,6 +222,26 @@ class Ego4DDataset(IterableDataset):
                 file_list.append(fpath.stem)
         # Return in sorted order for reproducibility
         return sorted(file_list)
+
+    @staticmethod
+    def get_silence_ratio(signal):
+        # Get overall silence ratio (this is faster, but not exactly what we want)
+        # return (signal == 0).to(dtype=torch.float32).mean()
+
+        # Get the ratio of longest contiguous silence to the whole signal
+        # For simplicity, we're only considering digital silence
+        # https://stackoverflow.com/a/58920786
+        return max(
+            (
+                len([i for i, _ in group])
+                for is_zero, group in groupby(
+                    enumerate((signal == 0.0).tolist()),
+                    key=itemgetter(1),
+                )
+                if not is_zero
+            ),
+            default=0,
+        ) / float(signal.shape[-1])
 
     def __iter__(self):
         for f in self.files:
@@ -294,6 +318,18 @@ class Ego4DDataset(IterableDataset):
                     streamer = stream = None # help out GC with clearing iterator
                     assert audio.shape == (num_audio_samples, 2)
                     assert video.shape[:2] == (num_video_samples, 3)
+
+                    # If both channels are the same, skip
+                    if not torch.allclose(audio[0], audio[1]):
+                        continue
+
+                    # If either channel has too much digital silence, skip
+                    silence_ratio_0 = self.get_silence_ratio(audio[0])
+                    silence_ratio_1 = self.get_silence_ratio(audio[1])
+                    # If the longest silence is more than the threshold, skip
+                    if max(silence_ratio_0, silence_ratio_1) >= self.silence_threshold:
+                        continue
+
                     # Get center frame of video
                     video = video[video.shape[0] // 2]
 
