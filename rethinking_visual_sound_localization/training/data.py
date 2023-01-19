@@ -224,7 +224,7 @@ class Ego4DDataset(IterableDataset):
             num_audio_samples = self.duration * self.sample_rate
             num_video_samples = self.duration * self.fps
             # Take minimum duration of streams
-            full_duration = min(stream['duration'] for stream in probe['streams'])
+            full_duration = min(float(stream['duration']) for stream in probe['streams'])
 
             if self.duration < full_duration:
                 sample_uniform = np.random.default_rng().uniform
