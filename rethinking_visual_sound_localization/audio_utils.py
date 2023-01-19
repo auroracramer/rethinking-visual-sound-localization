@@ -14,7 +14,7 @@ from torchaudio.functional import amplitude_to_DB, melscale_fbanks
 from ffmpeg import Error as FFmpegError
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 
 
 class SpectrogramGcc(torch.nn.Module):
