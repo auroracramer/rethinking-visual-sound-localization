@@ -36,12 +36,13 @@ class SpectrogramGcc(torch.nn.Module):
     _n_mels = 64
     _include_gcc_phat = True
 
-    def __init__(self, sample_rate) -> None:
+    def __init__(self, sample_rate, duration) -> None:
         super(SpectrogramGcc, self).__init__()
         self._sample_rate = sample_rate
         self._hop_length = int(self._sample_rate * (self._hop_size_ms / 1000))
         self._win_length = int(self._sample_rate * (self._win_size_ms / 1000))
         self._n_fft = int(self.next_greater_power_of_2(self._win_length))
+        self._num_samples = int(duration * self._sample_rate)
 
         self.register_buffer(
             "_window",
@@ -61,7 +62,7 @@ class SpectrogramGcc(torch.nn.Module):
             ).to(device=device, dtype=torch.float32),
             persistent=False,
         )
-        self.feature_shape = tuple(self.forward(np.ones((2, self._sample_rate))).shape)
+        self.feature_shape = tuple(self.forward(torch.ones(2, self._num_samples)).shape)
 
     def forward(self, waveform):
         return self.compute_spectrogram(
@@ -167,7 +168,9 @@ def read_ffmpeg_raw(filepath, dtype, fps=None, **output_kwargs):
         tf = ffmpeg.input(filepath)
         if fps:
             tf = tf.filter("fps", fps=fps, round="up")
-        tf = tf.output("pipe:", **output_kwargs)
+        tf = tf.output("pipe:", **output_kwargs, **{
+            "threads": 1
+        })
         out, err = (
             ffmpeg
             .input(filepath)

@@ -174,7 +174,10 @@ class Ego4DDataset(IterableDataset):
         self.fps = 30
         self.transform = _transform(224)
         self.num_channels = num_channels
-        self.preprocess = SpectrogramGcc(self.sample_rate) if (self.num_channels == 2) else spectrogram
+        self.preprocess = (
+            SpectrogramGcc(self.sample_rate, self.duration)
+            if (self.num_channels == 2) else spectrogram
+        )
         self.data_root = Path(data_root)
         self.chunk_duration = chunk_duration
         self.split = split
@@ -266,11 +269,17 @@ class Ego4DDataset(IterableDataset):
                             frames_per_chunk=num_audio_samples,
                             sample_rate=self.sample_rate,
                             format='fltp',
+                            decoder_option={
+                                "threads": 1,
+                            }
                         )
                         streamer.add_basic_video_stream(
                             frames_per_chunk=num_video_samples,
                             frame_rate=self.fps,
-                            format="rgb24"
+                            format="rgb24",
+                            decoder_option={
+                                "threads": 1,
+                            }
                         )
 
                         ## Extract the sampled window/frame for each time
