@@ -12,9 +12,9 @@ regex==2021.10.8
 scikit-learn==1.0
 scikit-video==1.1.11
 scipy==1.7.1
-torch==1.11.0
-torchaudio==0.11.0
-torchvision>=0.8.2
+torch==1.12.1
+torchaudio==0.12.1
+torchvision==0.13.1
 tqdm==4.62.3
 ttach==0.0.3
 wav2clip==0.1.0
