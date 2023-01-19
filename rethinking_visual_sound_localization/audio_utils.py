@@ -86,7 +86,7 @@ class SpectrogramGcc(torch.nn.Module):
     ):
         # multichannel stft returns (..., F, T)
         stft = torch.stft(
-                    input=torch.tensor(audio_data, device=device, dtype=torch.float32),
+                    input=audio_data.to(device=device, dtype=torch.float32),
                     win_length=win_length,
                     hop_length=hop_length,
                     n_fft=n_fft,
