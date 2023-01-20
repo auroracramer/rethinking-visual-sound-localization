@@ -314,6 +314,9 @@ class Ego4DDataset(IterableDataset):
                         # audio.shape = (frames, channels)
                         # video.shape = (frames, channels, height, width)
                         audio, video = next(stream)
+                        # Reseek to start to avoid ffmpeg decoding in the background
+                        # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
+                        streamer.seek(0, mode="key")
 
                     streamer = stream = None # help out GC with clearing iterator
                     assert audio.shape == (num_audio_samples, 2)
