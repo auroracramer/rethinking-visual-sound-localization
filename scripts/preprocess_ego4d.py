@@ -12,7 +12,7 @@ if __name__ == "__main__":
     silence_threshold: float = 0.1
     buffer_duration: int = 10
     chunk_duration: int = 5
-    num_threads: int = 1
+    num_threads: int = 8
 
     for video_path in get_video_files(data_root, stereo_only=True):
         print(f" * {video_path}")
