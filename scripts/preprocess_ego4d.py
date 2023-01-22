@@ -19,8 +19,8 @@ if __name__ == "__main__":
     num_channels = 2
     fps: int = 30
     silence_threshold: float = 0.1
-    buffer_duration: int = 10
-    chunk_duration: int = 5
+    buffer_duration: int = 4
+    chunk_duration: int = 1
     num_threads: int = 8
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Running ffmpeg with {num_threads} threads")
