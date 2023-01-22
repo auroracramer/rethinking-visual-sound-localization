@@ -122,7 +122,7 @@ def preprocess_video(
         video_dataset = h5.create_dataset(
             "video",
             shape=(total_video_frames, video_dim, video_dim, video_nchan),
-            shape=(num_chunk_video_frames, video_dim, video_dim, video_nchan),
+            chunks=(num_chunk_video_frames, video_dim, video_dim, video_nchan),
             dtype='f8',
             compression='lzf',
         )
