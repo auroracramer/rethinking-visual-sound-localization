@@ -14,7 +14,10 @@ if __name__ == "__main__":
     chunk_duration: int = 5
     num_threads: int = 8
 
-    for video_path in get_video_files(data_root, stereo_only=True):
+    print("Looking for videos in '{data_root}' ...")
+    video_paths = get_video_files(data_root, stereo_only=True)
+    print("Processing videos ...")
+    for video_path in video_paths:
         print(f" * {video_path}")
         preprocess_video(
             video_path,
@@ -26,3 +29,4 @@ if __name__ == "__main__":
             silence_threshold,
             num_threads=num_threads,
         )
+    print("Done! Yay!!!!")
