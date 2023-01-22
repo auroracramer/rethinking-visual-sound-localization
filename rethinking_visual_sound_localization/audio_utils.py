@@ -47,7 +47,7 @@ class SpectrogramGcc(torch.nn.Module):
 
         self.register_buffer(
             "_window",
-            torch.hann_window(self._win_length, device=self.device).to(dtype=torch.float32),
+            torch.hann_window(self._win_length, device=self._device).to(dtype=torch.float32),
             persistent=False,
         )
         self.register_buffer(
@@ -60,7 +60,7 @@ class SpectrogramGcc(torch.nn.Module):
                 sample_rate=self._sample_rate,
                 mel_scale="htk",
                 norm=None,
-            ).to(device=self.device, dtype=torch.float32),
+            ).to(device=self._device, dtype=torch.float32),
             persistent=False,
         )
         self.feature_shape = tuple(self.forward(torch.ones(2, self._num_samples)).shape)
@@ -92,14 +92,14 @@ class SpectrogramGcc(torch.nn.Module):
     ):
         # multichannel stft returns (..., F, T)
         stft = torch.stft(
-                    input=audio_data.to(device=self.device, dtype=torch.float32),
+                    input=audio_data.to(device=self._device, dtype=torch.float32),
                     win_length=win_length,
                     hop_length=hop_length,
                     n_fft=n_fft,
                     center=center,
                     window=(
                         window if window is not None
-                        else torch.hann_window(win_length, device=self.device)
+                        else torch.hann_window(win_length, device=self._device)
                     ),
                     pad_mode="constant",  # constant for zero padding
                     return_complex=True,
