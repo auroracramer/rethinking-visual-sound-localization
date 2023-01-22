@@ -71,7 +71,7 @@ def preprocess_video(
 ):
 
     video_path = Path(video_path)
-    hdf5_path = Path(hdf5_dir).join(f"{video_path.stem}.h5")
+    hdf5_path = Path(hdf5_dir).joinpath(f"{video_path.stem}.h5")
     hdf5_path.parent.mkdir(parents=True, exist_ok=True)
 
     probe = ffmpeg.probe(video_path)
