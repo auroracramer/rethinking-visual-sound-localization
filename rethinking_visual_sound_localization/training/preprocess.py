@@ -104,6 +104,7 @@ def preprocess_video(
     metadata = dict(
         path=str(video_path),
         buffer_duration=int(buffer_duration),
+        duration=float(full_duration),
         sample_rate=int(sample_rate),
         fps=int(fps),
         silence_threshold=float(silence_threshold),
