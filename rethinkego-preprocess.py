@@ -1,16 +1,17 @@
-import logging
-import math
 import h5py
+import math
 import torch
 import ffmpeg
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
-from typing import Optional
 from warnings import warn
 from torchaudio.io import StreamReader
 from ..audio_utils import SpectrogramGcc
 from ..training.data import _transform
+
+### DEBUG
+import logging
 
 
 def get_silence_ratio(signal):
@@ -69,7 +70,6 @@ def preprocess_video(
     fps: int,
     silence_threshold: float = 0.1,
     num_threads: int = 1,
-    device: Optional[str] = None,
 ):
 
     video_path = Path(video_path)
@@ -84,9 +84,9 @@ def preprocess_video(
     video_nchan = 3
     # Take minimum duration of streams
     full_duration = min(float(stream['duration']) for stream in probe['streams'])
-    # Set up transforms
     logging.info("    - setting up audio transform")
-    spec_tf = SpectrogramGcc(sample_rate, buffer_duration, device=device)
+    # Set up transforms
+    spec_tf = SpectrogramGcc(sample_rate, buffer_duration)
     spec_coro = get_spectrogram(spec_tf)
     next(spec_coro) # initialize coroutine
     audio_transform = lambda audio, last: spec_coro.send((audio, last))
@@ -115,8 +115,8 @@ def preprocess_video(
         video_nchan=int(video_nchan), # RGB
     )
 
+    logging.info(f"    - opening h5 file: {str(hdf5_path)}")
     # Set up HDF5 file
-    logging.info(f"    - opening hdf5 file: {str(hdf5_path)}")
     with h5py.File(str(hdf5_path), 'w') as h5:
         logging.info(f"    - creating audio dataset")
         audio_dataset = h5.create_dataset(
@@ -138,8 +138,8 @@ def preprocess_video(
         for k, v in metadata.items():
             h5.attrs[k] = v
 
-        # Open video for streaming via ffmpeg
         logging.info(f"    - opening video for streaming")
+        # Open video for streaming via ffmpeg
         with open(video_path, 'rb') as vfile:
             logging.info(f"    - creating stream reader")
             streamer = StreamReader(vfile)
@@ -151,8 +151,8 @@ def preprocess_video(
                 f"{video_path} must have two audio channels"
             )
 
-            # add output streams
             logging.info(f"    - adding output audio stream")
+            # add output streams
             streamer.add_basic_audio_stream(
                 frames_per_chunk=num_buffer_audio_samples,
                 sample_rate=sample_rate,
@@ -170,9 +170,8 @@ def preprocess_video(
                     "threads": str(num_threads),
                 }
             )
-            # Seek to start to avoid ffmpeg decoding in the background
-            # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
             logging.info(f"    - seeking to start of file")
+            # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
             streamer.seek(0)
 
             num_chunks = math.ceil(full_duration / buffer_duration)
@@ -186,10 +185,6 @@ def preprocess_video(
             for chunk_idx, (audio, video) in enumerate(streamer.stream()):
                 if chunk_idx % log_interval == 0:
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"    - moving tensors to '{device}'")
-                audio = audio.to(device=device)
-                video = video.to(device=device)
 
                 # Stream file to only load the relevant chunk at at time
                 start_ts = buffer_duration * chunk_idx
@@ -213,9 +208,9 @@ def preprocess_video(
                         f"[{float(start_ts)} - {end_ts}] has duplicate channels"
                     )
 
-                # If either channel has too much digital silence, warn user
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * checking for silence")
+                # If either channel has too much digital silence, warn user
                 silence_ratio_0 = get_silence_ratio(audio[0])
                 silence_ratio_1 = get_silence_ratio(audio[1])
                 if max(silence_ratio_0, silence_ratio_1) >= silence_threshold:
@@ -233,12 +228,12 @@ def preprocess_video(
                     logging.info(f"        * transforming video")
                 video = video_transform(video).detach().cpu().numpy()
 
-                # Not completely necessary but it feels weird to have this saved
-                # so the channels are in different places, so for video
-                # we'll move channel dim before image dims 
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * restructuring video")
-                video = video.permute(0, 3, 1, 2) 
+                # Not completely necessary but it feels weird to have this saved
+                # so the channels are in different places, so for video
+                # we'll move channel dim before image dims
+                video = video.permute(0, 3, 1, 2)
 
                 # Update HDF5
                 # audio.shape (Ta, F, C)

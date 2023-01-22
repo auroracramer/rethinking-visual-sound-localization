@@ -6,7 +6,6 @@ logging.basicConfig(
         format="%(asctime)s %(levelname)-8s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
 )
-import torch
 from rethinking_visual_sound_localization.training.preprocess import (
     get_video_files, preprocess_video
 )
@@ -22,9 +21,6 @@ if __name__ == "__main__":
     buffer_duration: int = 10
     chunk_duration: int = 5
     num_threads: int = 8
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logging.info(f"Running ffmpeg with {num_threads} threads")
-    logging.info(f"Running transforms with device '{device}'")
 
     logging.info(f"Looking for videos in '{data_root}' ...")
     video_paths = get_video_files(data_root, stereo_only=True)
@@ -40,6 +36,5 @@ if __name__ == "__main__":
             fps,
             silence_threshold,
             num_threads=num_threads,
-            device=device,
         )
     logging.info("Done! Yay!!!!")
