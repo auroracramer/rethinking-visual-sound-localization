@@ -77,6 +77,8 @@ def preprocess_video(
     probe = ffmpeg.probe(video_path)
     num_buffer_audio_samples = buffer_duration * sample_rate
     num_buffer_video_frames = buffer_duration * fps
+    video_dim = 224
+    video_nchan = 3
     # Take minimum duration of streams
     full_duration = min(float(stream['duration']) for stream in probe['streams'])
     # Set up transforms
@@ -93,8 +95,6 @@ def preprocess_video(
     num_chunk_video_frames = int(chunk_duration * fps)
     audio_nfreq = spec_tf._n_mels
     audio_nchan = (3 if spec_tf._include_gcc_phat else 2)
-    video_dim = 224
-    video_nchan = 3
 
     metadata = dict(
         path=video_path,
