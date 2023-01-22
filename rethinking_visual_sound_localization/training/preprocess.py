@@ -239,11 +239,15 @@ def preprocess_video(
                 # we'll move channel dim before image dims 
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * restructuring video")
-                video = video.permute(0, 3, 1, 2) 
+                #                     T  C, D, D
+                video = video.permute(0, 2, 3, 1) 
 
                 # Update HDF5
                 # audio.shape (Ta, F, C)
                 # video.shape (Tv, D, D, C)
+                assert audio.shape[1:] == (audio_nfreq, audio_nchan)
+                assert video.shape[1:] == (video_dim, video_dim, video_nchan)
+
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * storing audio in hdf5")
                 audio_dataset[audio_frame_idx:audio_frame_idx + audio.shape[0]] = audio
