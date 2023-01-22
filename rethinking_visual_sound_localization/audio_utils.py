@@ -64,7 +64,7 @@ class SpectrogramGcc(torch.nn.Module):
         )
         self.feature_shape = tuple(self.forward(torch.ones(2, self._num_samples)).shape)
 
-    def forward(self, waveform):
+    def forward(self, waveform, center: bool = True, time_first: bool = False):
         return self.compute_spectrogram(
             waveform,
             win_length=self._win_length,
@@ -74,6 +74,7 @@ class SpectrogramGcc(torch.nn.Module):
             window=self._window,
             mel_scale=self._mel_scale,
             include_gcc_phat=self._include_gcc_phat,
+            center=center,
         )
 
     @staticmethod
@@ -84,6 +85,8 @@ class SpectrogramGcc(torch.nn.Module):
             self, audio_data, win_length: int, hop_length: int, n_fft: int, n_mels: int,
             window: Optional[torch.Tensor], mel_scale: Optional[torch.Tensor],
             include_gcc_phat: bool,
+            center: bool = True,
+            time_first: bool = False,
     ):
         # multichannel stft returns (..., F, T)
         stft = torch.stft(
@@ -91,7 +94,7 @@ class SpectrogramGcc(torch.nn.Module):
                     win_length=win_length,
                     hop_length=hop_length,
                     n_fft=n_fft,
-                    center=True,
+                    center=center,
                     window=(
                         window if window is not None
                         else torch.hann_window(win_length, device=device)
@@ -143,8 +146,13 @@ class SpectrogramGcc(torch.nn.Module):
         # spectrogram.shape = (F, T, C)
         # spectrogram = spectrogram.permute(2, 1, 0)
 
-        # output input in shape (C, F, T) for both CNN and ResNet
-        spectrogram = spectrogram.permute(0, 2, 1)
+        if not time_first:
+            # output input in shape (C, F, T) for both CNN and ResNet
+            spectrogram = spectrogram.permute(0, 2, 1)
+        else:
+            # For preprocessing, makes more sense to store time-first (T, F, C)
+            spectrogram = spectrogram.permute(1, 2, 0)
+
         return spectrogram
 
 
