@@ -76,6 +76,7 @@ class SpectrogramGcc(torch.nn.Module):
             mel_scale=self._mel_scale,
             include_gcc_phat=self._include_gcc_phat,
             center=center,
+            time_first=time_first,
         )
 
     @staticmethod
