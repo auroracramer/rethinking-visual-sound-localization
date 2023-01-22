@@ -14,7 +14,7 @@ if __name__ == "__main__":
     chunk_duration: int = 5
     num_threads: int = 8
 
-    print("Looking for videos in '{data_root}' ...")
+    print(f"Looking for videos in '{data_root}' ...")
     video_paths = get_video_files(data_root, stereo_only=True)
     print("Processing videos ...")
     for video_path in video_paths:
