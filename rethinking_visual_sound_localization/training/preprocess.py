@@ -97,17 +97,17 @@ def preprocess_video(
     audio_nchan = (3 if spec_tf._include_gcc_phat else 2)
 
     metadata = dict(
-        path=video_path,
-        buffer_duration=buffer_duration,
-        sample_rate=sample_rate,
-        fps=fps,
-        silence_threshold=silence_threshold,
-        audio_frame_hop=audio_hop_size_s,
-        audio_nfreq=audio_nfreq,
-        audio_nchan=audio_nchan, # stereo + GCC
+        path=str(video_path),
+        buffer_duration=int(buffer_duration),
+        sample_rate=int(sample_rate),
+        fps=int(fps),
+        silence_threshold=float(silence_threshold),
+        audio_frame_hop=float(audio_hop_size_s),
+        audio_nfreq=int(audio_nfreq),
+        audio_nchan=int(audio_nchan), # stereo + GCC
         video_frame_hop=1.0/fps,
-        video_dim=video_dim,
-        video_nchan=video_nchan, # RGB
+        video_dim=int(video_dim),
+        video_nchan=int(video_nchan), # RGB
     )
 
     # Set up HDF5 file
