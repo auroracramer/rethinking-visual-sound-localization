@@ -239,4 +239,4 @@ def get_video_files(data_root: str, stereo_only: bool = False):
         if not stereo_only or (num_channels == 2):
             file_list.append(str(fpath))
     # Return in sorted order for consistency
-    return sorted(file_list)
+    return sorted(file_list, key=lambda x: Path(x).relative_to(data_root))
