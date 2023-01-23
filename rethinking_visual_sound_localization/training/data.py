@@ -10,16 +10,18 @@ import skvideo.io
 import torch
 from pathlib import Path
 from typing import Optional
-from PIL import Image
 from operator import itemgetter
 from itertools import groupby
 from torch.utils.data import IterableDataset
-from torchaudio.transforms import Spectrogram
-from torchvision.transforms import CenterCrop
-from torchvision.transforms import Compose
-from torchvision.transforms import Normalize
-from torchvision.transforms import Resize
-from torchvision.transforms import ToTensor
+from torchaudio.transforms import (
+    Spectrogram,
+    CenterCrop,
+    Compose,
+    Normalize,
+    Resize,
+    ToTensor,
+    ToPILImage,
+)
 
 from ..audio_utils import SpectrogramGcc, read_mp4_audio_ffmpeg, read_mp4_video_ffmpeg
 
@@ -38,6 +40,7 @@ def _convert_image_to_rgb(image):
 def _transform(n_px):
     return Compose(
         [
+            ToPILImage(mode="RGB"),
             Resize(n_px, interpolation=BICUBIC),
             CenterCrop(n_px),
             _convert_image_to_rgb,
@@ -134,7 +137,7 @@ class AudioVisualDataset(IterableDataset):
                             and video[video_slice, :].shape[0] == 1
                     ):
                         yield self.preprocess(audio[audio_slice]), self.transform(
-                            Image.fromarray(video[video_slice, :, :, :][0])
+                            video[video_slice, :, :, :][0]
                         )
             elif self.duration == 10:
                 if (
@@ -142,7 +145,7 @@ class AudioVisualDataset(IterableDataset):
                         and video.shape[0] == num_video_samples
                 ):
                     yield self.preprocess(audio), self.transform(
-                        Image.fromarray(video[video.shape[0] // 2, :, :, :])
+                        video[video.shape[0] // 2, :, :, :]
                     )
             else:
                 assert False

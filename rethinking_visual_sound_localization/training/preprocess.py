@@ -232,7 +232,13 @@ def preprocess_video(
                 audio = audio_transform(audio, end).detach().cpu().numpy()
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * transforming video {str(tuple(video.shape))}")
-                video = video_transform(Image.fromarray(video)).detach().cpu().numpy()
+                video = torch.stack(
+                    [
+                        video_transform(Image.fromarray(frame))
+                        for frame in video
+                    ],
+                    dim=0,
+                ).detach().cpu().numpy()
 
                 # Not completely necessary but it feels weird to have this saved
                 # so the channels are in different places, so for video
