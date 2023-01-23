@@ -3,6 +3,7 @@ import math
 import h5py
 import torch
 import ffmpeg
+from PIL import Image
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
@@ -187,10 +188,9 @@ def preprocess_video(
             for chunk_idx, (audio, video) in enumerate(streamer.stream()):
                 if chunk_idx % log_interval == 0:
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"    - moving tensors to '{device}'")
                 audio = audio.to(device=device).transpose(0, 1) # put channels first
-                video = video.to(device=device)
+                # We have to convert to Image, so just keep as numpy
+                video = video.detach().cpu().numpy()
 
                 # Stream file to only load the relevant chunk at at time
                 start_ts = buffer_duration * chunk_idx
@@ -232,7 +232,7 @@ def preprocess_video(
                 audio = audio_transform(audio, end).detach().cpu().numpy()
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * transforming video {str(tuple(video.shape))}")
-                video = video_transform(video).detach().cpu().numpy()
+                video = video_transform(Image(video)).detach().cpu().numpy()
 
                 # Not completely necessary but it feels weird to have this saved
                 # so the channels are in different places, so for video
