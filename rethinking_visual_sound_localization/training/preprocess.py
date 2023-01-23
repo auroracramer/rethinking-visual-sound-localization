@@ -189,8 +189,6 @@ def preprocess_video(
                 if chunk_idx % log_interval == 0:
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
                 audio = audio.to(device=device).transpose(0, 1) # put channels first
-                # We have to convert to Image, so just keep as numpy
-                video = video.detach().cpu().numpy()
 
                 # Stream file to only load the relevant chunk at at time
                 start_ts = buffer_duration * chunk_idx
@@ -233,7 +231,7 @@ def preprocess_video(
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * transforming video {str(tuple(video.shape))}")
                 video = torch.stack(
-                    [video_transform(frame) for frame in video],
+                    [video_transform(frame.transpose(2, 0, 1)) for frame in video],
                     dim=0,
                 ).detach().cpu().numpy()
 
