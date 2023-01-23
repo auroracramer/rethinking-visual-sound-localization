@@ -275,8 +275,8 @@ class Ego4DDataset(IterableDataset):
                         video_index = audio_index + (num_video_samples // 2)
 
                         # Read from hdf5
-                        audio = h5["audio"][audio_index:audio_index+num_audio_frames]
-                        video = h5["audio"][video_index]
+                        audio = torch.tensor(h5["audio"][audio_index:audio_index+num_audio_frames])
+                        video = torch.tensor(h5["audio"][video_index])
 
                         # audio.shape (Ta, F, C) -> (C, F, Ta)
                         audio = audio.permute(2, 1, 0)
