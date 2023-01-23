@@ -3,7 +3,6 @@ import math
 import h5py
 import torch
 import ffmpeg
-from PIL import Image
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
@@ -231,7 +230,7 @@ def preprocess_video(
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * transforming video {str(tuple(video.shape))}")
                 video = torch.stack(
-                    [video_transform(frame.transpose(2, 0, 1)) for frame in video],
+                    [video_transform(frame.transpose(1, 2, 0)) for frame in video],
                     dim=0,
                 ).detach().cpu().numpy()
 
