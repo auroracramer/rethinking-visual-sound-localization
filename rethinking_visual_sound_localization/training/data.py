@@ -3,18 +3,17 @@ import math
 import os
 import random
 
+import h5py
 import librosa
 import numpy as np
 import skvideo.io
 import torch
-import ffmpeg
 from pathlib import Path
 from typing import Optional
 from PIL import Image
 from operator import itemgetter
 from itertools import groupby
 from torch.utils.data import IterableDataset
-from torchaudio.io import StreamReader
 from torchaudio.transforms import Spectrogram
 from torchvision.transforms import CenterCrop
 from torchvision.transforms import Compose
@@ -204,24 +203,10 @@ class Ego4DDataset(IterableDataset):
         self.files = files[start_idx:end_idx]
 
     def get_video_filepath(self, video_name):
-        return os.path.join(self.data_root, f"{video_name}.mp4")
+        return os.path.join(self.data_root, f"{video_name}.h5")
 
     def get_video_files(self):
-        file_list = []
-        for fpath in self.data_root.glob("*.mp4"):
-            metadata = ffmpeg.probe(str(fpath))
-            num_channels = None
-            for stream in metadata["streams"]:
-                if stream["codec_type"] == "audio":
-                    if num_channels is not None:
-                        raise ValueError(
-                            f"Found more than one audio stream for {str(fpath)}"
-            )
-                    num_channels = int(stream["channels"])
-            if num_channels == self.num_channels:
-                file_list.append(fpath.stem)
-        # Return in sorted order for reproducibility
-        return sorted(file_list)
+        return sorted([fpath.stem for fpath in self.data_root.glob("*.h5")])
 
     @staticmethod
     def get_silence_ratio(signal):
@@ -231,130 +216,109 @@ class Ego4DDataset(IterableDataset):
         # Get the ratio of longest contiguous silence to the whole signal
         # For simplicity, we're only considering digital silence
         # https://stackoverflow.com/a/58920786
+        
+
+        # audio.shape (F, Ta)
+        nfreq, ntime = signal.shape
+        signal = signal.permute(1, 0)
         return max(
             (
                 len([i for i, _ in group])
                 for is_zero, group in groupby(
-                    enumerate((signal == 0.0).tolist()),
+                    enumerate(
+                        # Since we're using spectrogram, check that the decibels
+                        # are at the low end of the dynamic range
+                        ((signal <= -80.0).sum(axis=-1) == nfreq).tolist()
+                    ),
                     key=itemgetter(1),
                 )
                 if not is_zero
             ),
             default=0,
-        ) / float(signal.shape[-1])
+        ) / float(ntime)
 
     def __iter__(self):
         for f in self.files:
             fpath = self.get_video_filepath(f)
-            probe = ffmpeg.probe(fpath)
-
             num_audio_samples = self.duration * self.sample_rate
             num_video_samples = self.duration * self.fps
-            # Take minimum duration of streams
-            full_duration = min(float(stream['duration']) for stream in probe['streams'])
 
-            if self.duration < full_duration:
-                sample_uniform = np.random.default_rng().uniform
-                # split video into chunks and sample a window from each
-                for start_ts in np.arange(0.0, full_duration, step=self.chunk_duration):
-                    # sample a random window within the chunk
-                    if start_ts + self.chunk_duration <= full_duration:
-                        audio_offset = sample_uniform(0.0, self.chunk_duration - self.duration)
-                    else:
-                        leftover_duration = full_duration - start_ts
-                        if leftover_duration >= self.duration:
-                            # if we have at least a window's worth of samples,
-                            # we can still sample a window
-                            audio_offset = sample_uniform(0.0, leftover_duration - self.duration)
+            # Check attrs
+            with h5py.open(fpath, 'r') as h5:
+                assert h5.attrs["sample_rate"] == self.sample_rate
+                assert h5.attrs["fps"] == self.fps
+                assert h5.attrs["audio_nchan"] == self.num_channels
+                audio_frame_hop = h5.attrs["audio_frame_hop"]
+                full_duration = h5.attrs["duration"]
+                num_audio_frames = int(num_audio_samples / audio_frame_hop) + 1
+
+                if self.duration < full_duration:
+                    sample_uniform = np.random.default_rng().uniform
+                    # split video into chunks and sample a window from each
+                    for start_ts in np.arange(0.0, full_duration, step=self.chunk_duration):
+                        # sample a random window within the chunk
+                        if start_ts + self.chunk_duration <= full_duration:
+                            audio_offset = sample_uniform(0.0, self.chunk_duration - self.duration)
                         else:
-                            # ignore windows that are too short
+                            leftover_duration = full_duration - start_ts
+                            if leftover_duration >= self.duration:
+                                # if we have at least a window's worth of samples,
+                                # we can still sample a window
+                                audio_offset = sample_uniform(0.0, leftover_duration - self.duration)
+                            else:
+                                # ignore windows that are too short
+                                continue
+
+                        audio_ts = start_ts + audio_offset
+
+                        audio_index = int(audio_ts / audio_frame_hop)
+                        video_index = audio_index + (num_video_samples // 2)
+
+                        # Read from hdf5
+                        audio = h5["audio"][audio_index:audio_index+num_audio_frames]
+                        video = h5["audio"][video_index]
+
+                        # audio.shape (Ta, F, C) -> (C, F, Ta)
+                        audio = audio.permute(2, 1, 0)
+                        # video.shape (Tv, D, D, C) -> (Tv, C, D, D)
+                        video = video.permute(0, 3, 1, 2) 
+
+                        # If both channels are the same, skip
+                        if torch.allclose(audio[0], audio[1]):
                             continue
 
-                    audio_ts = start_ts + audio_offset
+                        # If either channel has too much digital silence, skip
+                        silence_ratio_0 = self.get_silence_ratio(audio[0])
+                        silence_ratio_1 = self.get_silence_ratio(audio[1])
+                        # If the longest silence is more than the threshold, skip
+                        if max(silence_ratio_0, silence_ratio_1) >= self.silence_threshold:
+                            continue
 
-                    # Stream file to only load the relevant chunk at at time
-                    # NOTE: We're encountering lots of OOMs despite streaming,
-                    #       so it may be the case that it has to keep the 
-                    #       decoder state in memory which maybe is a lot.
-                    #       So instead of keeping the file open and seeking
-                    #       in order, we'll just reopen the file and reseek for
-                    #       each time. It's slower but uses less memory at least
-                    with open(fpath, 'rb') as vfile:
-                        streamer = StreamReader(vfile)
-                        num_channels = streamer.get_src_stream_info(
-                            streamer.default_audio_stream
-                        ).num_channels
-                        assert num_channels == 2, (
-                            f"{fpath} must have two audio channels"
-                        )
+                        yield audio, video
 
-                        # add output streams
-                        streamer.add_basic_audio_stream(
-                            frames_per_chunk=num_audio_samples,
-                            sample_rate=self.sample_rate,
-                            format='fltp',
-                            decoder_option={
-                                "threads": "1",
-                            }
-                        )
-                        streamer.add_basic_video_stream(
-                            frames_per_chunk=num_video_samples,
-                            frame_rate=self.fps,
-                            format="rgb24",
-                            decoder_option={
-                                "threads": "1",
-                            }
-                        )
-
-                        ## Extract the sampled window/frame for each time
-                        # Seek to start of audio window
-                        streamer.seek(audio_ts)
-                        # Get corresponding audio and video window
-                        stream = streamer.stream()
-                        # audio.shape = (frames, channels)
-                        # video.shape = (frames, channels, height, width)
-                        audio, video = next(stream)
-                        # Reseek to start to avoid ffmpeg decoding in the background
-                        # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
-                        streamer.seek(0)
-
-                    streamer = stream = None # help out GC with clearing iterator
-                    assert audio.shape == (num_audio_samples, 2)
-                    assert video.shape[:2] == (num_video_samples, 3)
+                elif self.duration == full_duration:
+                    audio = h5["audio"][:]
+                    video = h5["video"][num_video_samples // 2]
+                    # audio.shape (Ta, F, C) -> (C, F, Ta)
+                    audio = audio.permute(2, 1, 0)
+                    # video.shape (Tv, D, D, C) -> (Tv, C, D, D)
+                    video = video.permute(0, 3, 1, 2) 
 
                     # If both channels are the same, skip
-                    if not torch.allclose(audio[0], audio[1]):
-                        continue
+                    if torch.allclose(audio[0], audio[1]):
+                        return
 
                     # If either channel has too much digital silence, skip
                     silence_ratio_0 = self.get_silence_ratio(audio[0])
                     silence_ratio_1 = self.get_silence_ratio(audio[1])
                     # If the longest silence is more than the threshold, skip
                     if max(silence_ratio_0, silence_ratio_1) >= self.silence_threshold:
-                        continue
+                        return
 
-                    # Get center frame of video
-                    video = video[video.shape[0] // 2]
+                    yield audio, video
 
-                    yield self.preprocess(audio), self.transform(video)
-
-            elif self.duration == full_duration:
-                # We can just load the whole ding dang thing
-                # NOTE: Right now I'm assuming that we probably won't hit this case
-                #       and if we do, that loading 5 seconds of audio and then
-                #       5 seconds of video won't be a big deal. But if that
-                #       isn't true, you'll need to replace this with stream
-                #       version
-                video = read_mp4_video_ffmpeg(fpath, probe, frame_rate=self.fps)
-                audio = read_mp4_audio_ffmpeg(fpath, probe, sample_rate=self.sample_rate)
-                assert audio.shape == (num_audio_samples, 2)
-                assert video.shape[:2] == (num_video_samples, 3)
-                # Get center frame of video
-                video = video[video.shape[0] // 2, :, :, :]
-
-                yield self.preprocess(audio), self.transform(video)
-            else:
-                assert False
+                else:
+                    assert False
 
 
 def worker_init_fn(worker_id):
