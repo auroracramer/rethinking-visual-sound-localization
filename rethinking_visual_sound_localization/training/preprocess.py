@@ -189,7 +189,7 @@ def preprocess_video(
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
                 if chunk_idx % log_interval == 0:
                     logging.info(f"    - moving tensors to '{device}'")
-                audio = audio.to(device=device)
+                audio = audio.to(device=device).transpose(0, 1) # put channels first
                 video = video.to(device=device)
 
                 # Stream file to only load the relevant chunk at at time
@@ -202,8 +202,8 @@ def preprocess_video(
 
                 # audio.shape = (frames, channels)
                 # video.shape = (frames, channels, height, width)
-                assert audio.shape == (num_buffer_audio_samples, 2)
-                assert video.shape[:2] == (num_buffer_video_frames, 3)
+                assert audio.shape == (num_channels, num_buffer_audio_samples)
+                assert video.shape[:2] == (num_buffer_video_frames, video_nchan)
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
