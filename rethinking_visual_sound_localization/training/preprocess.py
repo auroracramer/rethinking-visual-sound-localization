@@ -240,15 +240,13 @@ def preprocess_video(
                         for frame in video
                     ],
                     dim=0,
-                ).detach().cpu().numpy()
+                ).permute(0, 2, 3, 1).detach().cpu().numpy()
 
                 # Not completely necessary but it feels weird to have this saved
                 # so the channels are in different places, so for video
                 # we'll move channel dim before image dims 
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * restructuring video")
-                #                     T  C, D, D
-                video = video.permute(0, 2, 3, 1) 
 
                 # Update HDF5
                 # audio.shape (Ta, F, C)
