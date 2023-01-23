@@ -39,7 +39,6 @@ def _convert_image_to_rgb(image):
 def _transform(n_px):
     return Compose(
         [
-            ToPILImage(mode="RGB"),
             Resize(n_px, interpolation=BICUBIC),
             CenterCrop(n_px),
             _convert_image_to_rgb,
@@ -136,7 +135,7 @@ class AudioVisualDataset(IterableDataset):
                             and video[video_slice, :].shape[0] == 1
                     ):
                         yield self.preprocess(audio[audio_slice]), self.transform(
-                            video[video_slice, :, :, :][0]
+                            Image.fromarray(video[video_slice, :, :, :][0])
                         )
             elif self.duration == 10:
                 if (
@@ -144,7 +143,7 @@ class AudioVisualDataset(IterableDataset):
                         and video.shape[0] == num_video_samples
                 ):
                     yield self.preprocess(audio), self.transform(
-                        video[video.shape[0] // 2, :, :, :]
+                        Image.fromarray(video[video.shape[0] // 2, :, :, :])
                     )
             else:
                 assert False
