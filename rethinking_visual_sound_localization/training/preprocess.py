@@ -41,6 +41,7 @@ def get_spectrogram(
     start = True
     # Double check this, but it works for the 50% hop case
     num_invalid_pad = math.ceil(spec_tf._win_size_ms / spec_tf._hop_size_ms) - 1
+    audio = (yield)
     while True:
         audio, end = (yield)
 
