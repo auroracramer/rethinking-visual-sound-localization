@@ -41,10 +41,8 @@ def get_spectrogram(
     start = True
     # Double check this, but it works for the 50% hop case
     num_invalid_pad = math.ceil(spec_tf._win_size_ms / spec_tf._hop_size_ms) - 1
-    audio = (yield)
     while True:
         audio, end = (yield)
-
         # Get spectrogram, using centering if we're at a boundary
         spec = spec_tf.forward(audio, center=(start or end), time_first=True)
         audio = None # help out gc
@@ -90,8 +88,9 @@ def preprocess_video(
     logging.info("    - setting up audio transform")
     spec_tf = SpectrogramGcc(sample_rate, buffer_duration, device=device)
     spec_coro = get_spectrogram(spec_tf)
-    next(spec_coro) # initialize coroutine
-    audio_transform = lambda audio, last: spec_coro.send((audio, last))
+    def audio_transform(audio, last):
+        next(spec_coro) # advance coroutine to first yield
+        return spec_coro.send((audio, last))
     logging.info("    - setting up image transform")
     video_transform = _transform(video_dim)
 
