@@ -205,10 +205,10 @@ def preprocess_video(
                 assert audio.shape == (num_buffer_audio_samples, 2)
                 assert video.shape[:2] == (num_buffer_video_frames, 3)
 
+                # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * checking for duplicate channels")
-                # If both channels are the same, warn user
-                if not torch.allclose(audio[0], audio[1]):
+                if torch.allclose(audio[0], audio[1]):
                     warn(
                         f"video '{Path(video_path).name}': "
                         f"[{float(start_ts)} - {end_ts}] has duplicate channels"
@@ -221,7 +221,7 @@ def preprocess_video(
                 silence_ratio_1 = get_silence_ratio(audio[1])
                 if max(silence_ratio_0, silence_ratio_1) >= silence_threshold:
                     warn(
-                        f"video '{Path(path).name}': "
+                        f"video '{Path(video_path).name}': "
                         f"[{float(start_ts)} - {end_ts}] contains more than "
                         f"{int(silence_threshold * 100)}% digital silence"
                     )
