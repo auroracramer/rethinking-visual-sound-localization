@@ -13,7 +13,7 @@ from typing import Optional
 from operator import itemgetter
 from itertools import groupby
 from torch.utils.data import IterableDataset
-from torchaudio import Spectrogram
+from torchaudio.transforms import Spectrogram
 from torchvision.transforms import (
     CenterCrop,
     Compose,
