@@ -230,7 +230,7 @@ def preprocess_video(
                 if chunk_idx % log_interval == 0:
                     logging.info(f"        * transforming video {str(tuple(video.shape))}")
                 video = torch.stack(
-                    [video_transform(frame.transpose(1, 2, 0)) for frame in video],
+                    [video_transform(frame.permute(1, 2, 0)) for frame in video],
                     dim=0,
                 ).detach().cpu().numpy()
 
