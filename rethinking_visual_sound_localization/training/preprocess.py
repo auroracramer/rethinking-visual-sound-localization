@@ -190,13 +190,8 @@ def preprocess_video(
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
                 audio = audio.to(device=device).transpose(0, 1) # put channels first
 
-                # Stream file to only load the relevant chunk at at time
                 start_ts = buffer_duration * chunk_idx
-                end_ts = (
-                    start_ts + buffer_duration
-                    if (chunk_idx == (num_chunks - 1))
-                    else full_duration
-                )
+                end_ts = min(start_ts + buffer_duration, full_duration)
 
                 # audio.shape = (frames, channels)
                 # video.shape = (frames, channels, height, width)
