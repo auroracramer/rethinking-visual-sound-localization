@@ -13,8 +13,8 @@ from typing import Optional
 from operator import itemgetter
 from itertools import groupby
 from torch.utils.data import IterableDataset
-from torchaudio.transforms import (
-    Spectrogram,
+from torchaudio import Spectrogram
+from torchvision.transforms import (
     CenterCrop,
     Compose,
     Normalize,
@@ -23,7 +23,6 @@ from torchaudio.transforms import (
     ToPILImage,
 )
 
-from ..audio_utils import SpectrogramGcc, read_mp4_audio_ffmpeg, read_mp4_video_ffmpeg
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -179,10 +178,6 @@ class Ego4DDataset(IterableDataset):
         self.fps = 30
         self.transform = _transform(224)
         self.num_channels = num_channels
-        self.preprocess = (
-            SpectrogramGcc(self.sample_rate, self.duration)
-            if (self.num_channels == 2) else spectrogram
-        )
         self.data_root = Path(data_root)
         self.chunk_duration = chunk_duration
         self.split = split
