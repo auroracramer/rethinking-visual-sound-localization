@@ -1,3 +1,4 @@
+import argparse
 import sys
 import logging
 logging.basicConfig(
@@ -8,13 +9,17 @@ logging.basicConfig(
 )
 import torch
 from rethinking_visual_sound_localization.training.preprocess import (
-    get_video_files, preprocess_video
+    is_stereo, preprocess_video
 )
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("video_path", type=str)
+    parser.add_argument("output_dir", type=str)
+    return parser.parse_args()
+
 if __name__ == "__main__":
-    # data source location
-    data_root: str = "/vast/work/public/ml-datasets/ego4d/v1/full_scale"
-    output_dir: str = "/scratch/jtc440/ego4d-preprocessed-data"
+    args = parse_arguments()
     sample_rate: int = 16000
     num_channels = 2
     fps: int = 30
@@ -26,14 +31,12 @@ if __name__ == "__main__":
     logging.info(f"Running ffmpeg with {num_threads} threads")
     logging.info(f"Running transforms with device '{device}'")
 
-    logging.info(f"Looking for videos in '{data_root}' ...")
-    video_paths = get_video_files(data_root, stereo_only=True)
-    logging.info("Processing videos ...")
-    for video_path in video_paths:
-        logging.info(f" * {video_path}")
+    logging.info(f"Checking if '{args.video_path}' is stereo")
+    if is_stereo(args.video_path):
+        logging.info(f"Processing '{args.video_path}'")
         preprocess_video(
-            video_path,
-            output_dir,
+            args.video_path,
+            args.output_dir,
             buffer_duration,
             chunk_duration,
             sample_rate,
@@ -42,4 +45,7 @@ if __name__ == "__main__":
             num_threads=num_threads,
             device=device,
         )
+    else:
+        logging.info(f"'{args.video_path}' is not stereo. Skipping")
+
     logging.info("Done! Yay!!!!")

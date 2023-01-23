@@ -259,20 +259,24 @@ def preprocess_video(
                 video_frame_idx += video.shape[0]
 
 
+def is_stereo(fpath):
+    metadata = ffmpeg.probe(str(fpath))
+    num_channels = None
+    for stream in metadata["streams"]:
+        if stream["codec_type"] == "audio":
+            if num_channels is not None:
+                raise ValueError(
+                    f"Found more than one audio stream for {str(fpath)}"
+                )
+            num_channels = int(stream["channels"])
+    return num_channels == 2
+
+
 def get_video_files(data_root: str, stereo_only: bool = False):
     data_root = Path(data_root)
     file_list = []
     for fpath in data_root.glob("*.mp4"):
-        metadata = ffmpeg.probe(str(fpath))
-        num_channels = None
-        for stream in metadata["streams"]:
-            if stream["codec_type"] == "audio":
-                if num_channels is not None:
-                    raise ValueError(
-                        f"Found more than one audio stream for {str(fpath)}"
-        )
-                num_channels = int(stream["channels"])
-        if not stereo_only or (num_channels == 2):
+        if not stereo_only or is_stereo(fpath):
             file_list.append(str(fpath))
     # Return in sorted order for consistency
     return sorted(file_list, key=lambda x: Path(x).relative_to(data_root))
