@@ -228,10 +228,10 @@ def preprocess_video(
 
                 # Process audio and video
                 if chunk_idx % log_interval == 0:
-                    logging.info(f"        * transforming audio")
+                    logging.info(f"        * transforming audio {str(tuple(audio.shape))}")
                 audio = audio_transform(audio, end).detach().cpu().numpy()
                 if chunk_idx % log_interval == 0:
-                    logging.info(f"        * transforming video")
+                    logging.info(f"        * transforming video {str(tuple(video.shape))}")
                 video = video_transform(video).detach().cpu().numpy()
 
                 # Not completely necessary but it feels weird to have this saved
@@ -249,10 +249,10 @@ def preprocess_video(
                 assert video.shape[1:] == (video_dim, video_dim, video_nchan)
 
                 if chunk_idx % log_interval == 0:
-                    logging.info(f"        * storing audio in hdf5")
+                    logging.info(f"        * storing audio in hdf5 {str(tuple(audio.shape))}")
                 audio_dataset[audio_frame_idx:audio_frame_idx + audio.shape[0]] = audio
                 if chunk_idx % log_interval == 0:
-                    logging.info(f"        * storing video in hdf5")
+                    logging.info(f"        * storing video in hdf5 {str(tuple(video.shape))}")
                 video_dataset[video_frame_idx:video_frame_idx + video.shape[0]] = video
 
                 audio_frame_idx += audio.shape[0]
