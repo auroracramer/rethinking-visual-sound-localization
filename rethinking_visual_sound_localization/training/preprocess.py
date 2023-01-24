@@ -195,8 +195,16 @@ def preprocess_video(
 
                 # audio.shape = (frames, channels)
                 # video.shape = (frames, channels, height, width)
-                assert audio.shape == (num_channels, min(num_buffer_audio_samples, int((end_ts - start_ts) * sample_rate))
-                assert video.shape[:2] == (num_buffer_video_frames, video_nchan)
+                num_curr_buffer_audio_samples = min(
+                    num_buffer_audio_samples,
+                    int((end_ts - start_ts) * sample_rate),
+                )
+                num_curr_buffer_video_frames = min(
+                    num_buffer_video_frames,
+                    int((end_ts - start_ts) * fps),
+                )
+                assert audio.shape == (num_channels, num_curr_buffer_audio_samples)
+                assert video.shape[:2] == (num_curr_buffer_video_frames, video_nchan)
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
