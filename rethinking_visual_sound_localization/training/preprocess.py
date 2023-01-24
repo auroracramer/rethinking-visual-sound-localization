@@ -177,6 +177,9 @@ def preprocess_video(
             logging.info(f"    - seeking to start of file")
             streamer.seek(0)
 
+            # Note: because we're using the min of the stream durations, we might
+            #       have an additional buffer, but this is a good enough
+            #       estimate for now
             num_chunks = math.ceil(full_duration / buffer_duration)
 
             audio_frame_idx = 0
@@ -195,16 +198,14 @@ def preprocess_video(
 
                 # audio.shape = (frames, channels)
                 # video.shape = (frames, channels, height, width)
-                num_curr_buffer_audio_samples = min(
-                    num_buffer_audio_samples,
-                    int((end_ts - start_ts) * sample_rate),
-                )
-                num_curr_buffer_video_frames = min(
-                    num_buffer_video_frames,
-                    int((end_ts - start_ts) * fps),
-                )
-                assert audio.shape == (num_channels, num_curr_buffer_audio_samples)
-                assert video.shape[:2] == (num_curr_buffer_video_frames, video_nchan)
+                if chunk_idx < (num_chunks - 1):
+                    assert audio.shape == (num_channels, num_buffer_audio_samples)
+                    assert video.shape[:2] == (num_buffer_video_frames, video_nchan)
+                else:
+                    assert audio.shape[0] == num_channels
+                    assert audio.shape[1] <= num_buffer_audio_samples
+                    assert video.shape[-1] == video_nchan
+                    assert video.shape[-2] <= num_buffer_video_frames
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
