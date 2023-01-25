@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 from warnings import warn
 from torchaudio.io import StreamReader
-from ..audio_utils import SpectrogramGcc
+from ..audio_utils import SpectrogramGcc, get_stream
 from ..training.data import _transform
 
 
@@ -82,8 +82,9 @@ def preprocess_video(
     num_buffer_video_frames = buffer_duration * fps
     video_dim = 224
     video_nchan = 3
-    # Take minimum duration of streams
-    full_duration = min(float(stream['duration']) for stream in probe['streams'])
+    audio_duration = get_stream(probe, "audio")["duration"]
+    video_duration = get_stream(probe, "video")["duration"]
+    full_duration = max(audio_duration, video_duration)
     # Set up transforms
     logging.info("    - setting up audio transform")
     spec_tf = SpectrogramGcc(sample_rate, buffer_duration, device=device)
@@ -95,8 +96,8 @@ def preprocess_video(
     video_transform = _transform(video_dim)
 
     audio_hop_size_s = spec_tf._hop_size_ms / 1000
-    total_audio_frames = int(full_duration / audio_hop_size_s) + 1
-    total_video_frames = int(full_duration * fps)
+    total_audio_frames = int(audio_duration / audio_hop_size_s) + 1
+    total_video_frames = int(video_duration * fps)
     num_chunk_audio_frames = int(chunk_duration / audio_hop_size_s) + 1
     num_chunk_video_frames = int(chunk_duration * fps)
     audio_nfreq = spec_tf._n_mels
@@ -105,7 +106,9 @@ def preprocess_video(
     metadata = dict(
         path=str(video_path),
         buffer_duration=int(buffer_duration),
-        duration=float(full_duration),
+        duration=float(max(audio_duration, video_duration)),
+        audio_duration=float(audio_duration),
+        video_duration=float(video_duration),
         sample_rate=int(sample_rate),
         fps=int(fps),
         silence_threshold=float(silence_threshold),
@@ -196,16 +199,21 @@ def preprocess_video(
                 start_ts = buffer_duration * chunk_idx
                 end_ts = min(start_ts + buffer_duration, full_duration)
 
+                end_ts_audio = min(start_ts + buffer_duration, audio_duration)
+                end_ts_video = min(start_ts + buffer_duration, video_duration)
+
                 # audio.shape = (frames, channels)
                 # video.shape = (frames, channels, height, width)
-                if chunk_idx < (num_chunks - 1):
-                    assert audio.shape == (num_channels, num_buffer_audio_samples)
-                    assert video.shape[:2] == (num_buffer_video_frames, video_nchan)
-                else:
-                    assert audio.shape[0] == num_channels
-                    assert audio.shape[1] <= num_buffer_audio_samples
-                    assert video.shape[0] <= num_buffer_video_frames
-                    assert video.shape[1] == video_nchan
+                num_curr_buffer_audio_samples = min(
+                    num_buffer_audio_samples,
+                    int((end_ts_audio - start_ts) * sample_rate),
+                )
+                num_curr_buffer_video_frames = min(
+                    num_buffer_video_frames,
+                    int((end_ts_video - start_ts) * fps),
+                )
+                assert audio.shape == (num_channels, num_curr_buffer_audio_samples)
+                assert video.shape[:2] == (num_curr_buffer_video_frames, video_nchan)
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
