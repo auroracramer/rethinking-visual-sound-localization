@@ -204,8 +204,8 @@ def preprocess_video(
                 else:
                     assert audio.shape[0] == num_channels
                     assert audio.shape[1] <= num_buffer_audio_samples
-                    assert video.shape[-1] == video_nchan
-                    assert video.shape[-2] <= num_buffer_video_frames
+                    assert video.shape[0] <= num_buffer_video_frames
+                    assert video.shape[1] == video_nchan
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
