@@ -82,8 +82,8 @@ def preprocess_video(
     num_buffer_video_frames = buffer_duration * fps
     video_dim = 224
     video_nchan = 3
-    audio_duration = get_stream(probe, "audio")["duration"]
-    video_duration = get_stream(probe, "video")["duration"]
+    audio_duration = float(get_stream(probe, "audio")["duration"])
+    video_duration = float(get_stream(probe, "video")["duration"])
     full_duration = max(audio_duration, video_duration)
     # Set up transforms
     logging.info("    - setting up audio transform")
