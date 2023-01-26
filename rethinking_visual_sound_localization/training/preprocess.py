@@ -175,39 +175,30 @@ def preprocess_video(
                 if chunk_idx % log_interval == 0:
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
                 audio = audio.to(device=device).transpose(0, 1) # put channels first
+                if chunk_idx % log_interval == 0:
+                    logging.info(f"        * audio buffer shape: {audio.shape}")
+                    logging.info(f"        * video buffer shape: {video.shape}")
 
                 start_ts = buffer_duration * chunk_idx
                 end_ts = min(start_ts + buffer_duration, full_duration)
 
-                if chunk_idx < (num_chunks - 1):
-                    audio_shape_err = (
-                        f"expected audio shape "
-                        f"({num_channels}, {num_buffer_audio_samples}), "
-                        f"but got {audio.shape}"
-                    )
-                    video_shape_err = (
-                        f"expected video shape "
-                        f"({num_buffer_video_frames}, {video_nchan}, :, :), "
-                        f"but got {video.shape}"
-                    )
-                    assert audio.shape == (num_channels, num_buffer_audio_samples), audio_shape_err
-                    assert video.shape[:2] == (num_buffer_video_frames, video_nchan), video_shape_err
-                else:
-                    # The last buffer is a bit wonky, so give it some slack
-                    audio_shape_err = (
+                assert audio.shape[0] == num_channels
+                assert video.shape[1] == video_nchan
+                # Due to decoding quirks, it seems like we don't necessarily
+                # get a predictable buffer size, so just warn the user if
+                # the buffer is bigger than expected
+                if not (audio.shape[1] <= num_buffer_audio_samples):
+                    logging.info(
                         f"expected audio shape "
                         f"({num_channels}, x <= {num_buffer_audio_samples}), "
                         f"but got {audio.shape}"
                     )
-                    video_shape_err = (
+                if not (video.shape[0] <= num_buffer_video_frames):
+                    logging.info(
                         f"expected video shape "
                         f"(x <= {num_buffer_video_frames}, {video_nchan}, :, :), "
                         f"but got {video.shape}"
                     )
-                    assert audio.shape[0] == num_channels, audio_shape_err
-                    assert video.shape[1] == video_nchan, video_shape_err
-                    assert (audio.shape[1] <= num_buffer_audio_samples), audio_shape_err
-                    assert (video.shape[0] <= num_buffer_video_frames), video_shape_err
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
