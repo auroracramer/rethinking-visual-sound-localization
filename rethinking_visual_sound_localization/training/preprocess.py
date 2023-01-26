@@ -103,23 +103,6 @@ def preprocess_video(
     audio_nfreq = spec_tf._n_mels
     audio_nchan = (3 if spec_tf._include_gcc_phat else 2)
 
-    metadata = dict(
-        path=str(video_path),
-        buffer_duration=int(buffer_duration),
-        duration=float(max(audio_duration, video_duration)),
-        audio_duration=float(audio_duration),
-        video_duration=float(video_duration),
-        sample_rate=int(sample_rate),
-        fps=int(fps),
-        silence_threshold=float(silence_threshold),
-        audio_frame_hop=float(audio_hop_size_s),
-        audio_nfreq=int(audio_nfreq),
-        audio_nchan=int(audio_nchan), # stereo + GCC
-        video_frame_hop=1.0/fps,
-        video_dim=int(video_dim),
-        video_nchan=int(video_nchan), # RGB
-    )
-
     # Set up HDF5 file
     logging.info(f"    - opening hdf5 file: {str(hdf5_path)}")
     with h5py.File(str(hdf5_path), 'w') as h5:
@@ -139,9 +122,6 @@ def preprocess_video(
             dtype='f8',
             compression='lzf',
         )
-        logging.info(f"    - updating metadata")
-        for k, v in metadata.items():
-            h5.attrs[k] = v
 
         # Open video for streaming via ffmpeg
         logging.info(f"    - opening video for streaming")
@@ -199,9 +179,6 @@ def preprocess_video(
                 start_ts = buffer_duration * chunk_idx
                 end_ts = min(start_ts + buffer_duration, full_duration)
 
-                end_ts_audio = min(start_ts + buffer_duration, audio_duration)
-                end_ts_video = min(start_ts + buffer_duration, video_duration)
-
                 if chunk_idx < (num_chunks - 1):
                     audio_shape_err = (
                         f"expected audio shape "
@@ -217,22 +194,20 @@ def preprocess_video(
                     assert video.shape[:2] == (num_buffer_video_frames, video_nchan), video_shape_err
                 else:
                     # The last buffer is a bit wonky, so give it some slack
-                    min_audio_samples = int((end_ts_audio - start_ts) * sample_rate)
-                    min_video_frames = int((end_ts_video - start_ts) * fps)
                     audio_shape_err = (
-                        f"expected audio shape ({num_channels}, "
-                        f"{min_audio_samples} <= x <= "
-                        f"{num_buffer_audio_samples}), but got {audio.shape}"
+                        f"expected audio shape "
+                        f"({num_channels}, x <= {num_buffer_audio_samples}), "
+                        f"but got {audio.shape}"
                     )
                     video_shape_err = (
-                        f"expected video shape ({min_video_frames} <= x <= "
-                        f"{num_buffer_video_frames}, {video_nchan}, :, :), "
+                        f"expected video shape "
+                        f"(x <= {num_buffer_video_frames}, {video_nchan}, :, :), "
                         f"but got {video.shape}"
                     )
                     assert audio.shape[0] == num_channels, audio_shape_err
                     assert video.shape[1] == video_nchan, video_shape_err
-                    assert (min_audio_samples <= audio.shape[1] <= num_buffer_audio_samples), audio_shape_err
-                    assert min_video_frames <= video.shape[0] <= num_buffer_video_frames, video_shape_err
+                    assert (audio.shape[1] <= num_buffer_audio_samples), audio_shape_err
+                    assert (video.shape[0] <= num_buffer_video_frames), video_shape_err
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
@@ -295,6 +270,26 @@ def preprocess_video(
                 audio_frame_idx += audio.shape[0]
                 video_frame_idx += video.shape[0]
 
+        logging.info(f"    - updating metadata")
+        metadata = dict(
+            path=str(video_path),
+            buffer_duration=int(buffer_duration),
+            duration=float(max(audio_duration, video_duration)),
+            num_audio_frames=audio_frame_idx, # since we're preallocating
+            num_video_frames=video_frame_idx, # we need to keep track of this
+            sample_rate=int(sample_rate),
+            fps=int(fps),
+            silence_threshold=float(silence_threshold),
+            audio_frame_hop=float(audio_hop_size_s),
+            audio_nfreq=int(audio_nfreq),
+            audio_nchan=int(audio_nchan), # stereo + GCC
+            video_frame_hop=1.0/fps,
+            video_dim=int(video_dim),
+            video_nchan=int(video_nchan), # RGB
+        )
+
+        for k, v in metadata.items():
+            h5.attrs[k] = v
 
 def is_stereo(fpath):
     metadata = ffmpeg.probe(str(fpath))
