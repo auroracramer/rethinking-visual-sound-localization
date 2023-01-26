@@ -202,18 +202,37 @@ def preprocess_video(
                 end_ts_audio = min(start_ts + buffer_duration, audio_duration)
                 end_ts_video = min(start_ts + buffer_duration, video_duration)
 
-                # audio.shape = (frames, channels)
-                # video.shape = (frames, channels, height, width)
-                num_curr_buffer_audio_samples = min(
-                    num_buffer_audio_samples,
-                    int((end_ts_audio - start_ts) * sample_rate),
-                )
-                num_curr_buffer_video_frames = min(
-                    num_buffer_video_frames,
-                    int((end_ts_video - start_ts) * fps),
-                )
-                assert audio.shape == (num_channels, num_curr_buffer_audio_samples)
-                assert video.shape[:2] == (num_curr_buffer_video_frames, video_nchan)
+                if chunk_idx < (num_chunks - 1):
+                    audio_shape_err = (
+                        f"expected audio shape "
+                        f"({num_channels}, {num_buffer_audio_samples}), "
+                        f"but got {audio.shape}"
+                    )
+                    video_shape_err = (
+                        f"expected video shape "
+                        f"({num_buffer_video_frames}, {video_nchan}, :, :), "
+                        f"but got {video.shape}"
+                    )
+                    assert audio.shape == (num_channels, num_buffer_audio_samples), audio_shape_err
+                    assert video.shape[:2] == (num_buffer_video_frames, video_nchan), video_shape_err
+                else:
+                    # The last buffer is a bit wonky, so give it some slack
+                    min_audio_samples = int((end_ts_audio - start_ts) * sample_rate)
+                    min_video_frames = int((end_ts_video - start_ts) * fps)
+                    audio_shape_err = (
+                        f"expected audio shape ({num_channels}, "
+                        f"{min_audio_samples} <= x <= "
+                        f"{num_buffer_audio_samples}), but got {audio.shape}"
+                    )
+                    video_shape_err = (
+                        f"expected video shape ({min_video_frames} <= x <= "
+                        f"{num_buffer_video_frames}, {video_nchan}, :, :), "
+                        f"but got {video.shape}"
+                    )
+                    assert audio.shape[0] == num_channels, audio_shape_err
+                    assert video.shape[1] == video_nchan, video_shape_err
+                    assert (min_audio_samples <= audio.shape[1] <= num_buffer_audio_samples), audio_shape_err
+                    assert min_video_frames <= video.shape[0] <= num_buffer_video_frames, video_shape_err
 
                 # If both channels are the same, warn user
                 if chunk_idx % log_interval == 0:
