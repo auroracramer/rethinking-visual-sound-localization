@@ -174,92 +174,107 @@ def preprocess_video(
             for chunk_idx, (audio, video) in enumerate(streamer.stream()):
                 if chunk_idx % log_interval == 0:
                     logging.info(f"    - processing output for chunk {chunk_idx+1}/{num_chunks}")
-                audio = audio.to(device=device).transpose(0, 1) # put channels first
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * audio buffer shape: {audio.shape}")
-                    logging.info(f"        * video buffer shape: {video.shape}")
-
+                
                 start_ts = buffer_duration * chunk_idx
                 end_ts = min(start_ts + buffer_duration, full_duration)
 
-                assert audio.shape[0] == num_channels
-                assert video.shape[1] == video_nchan
-                # Due to decoding quirks, it seems like we don't necessarily
-                # get a predictable buffer size, so just warn the user if
-                # the buffer is bigger than expected
-                if not (audio.shape[1] <= num_buffer_audio_samples):
-                    logging.info(
-                        f"expected audio shape "
-                        f"({num_channels}, x <= {num_buffer_audio_samples}), "
-                        f"but got {audio.shape}"
-                    )
-                if not (video.shape[0] <= num_buffer_video_frames):
-                    logging.info(
-                        f"expected video shape "
-                        f"(x <= {num_buffer_video_frames}, {video_nchan}, :, :), "
-                        f"but got {video.shape}"
-                    )
+                # Process audio
+                if audio is not None: # account for if there's video and no audio
+                    # This check is most important for audio, since we need
+                    # the end flag to handle the last spectrogram frame
+                    if not (chunk_idx < (num_chunks - 1)):
+                        assert not end, f"Expected {num_chunks}, but found at least {chunk_idx+1}"
+                        end = True
 
-                # If both channels are the same, warn user
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * checking for duplicate channels")
-                if torch.allclose(audio[0], audio[1]):
-                    warn(
-                        f"video '{Path(video_path).name}': "
-                        f"[{float(start_ts)} - {end_ts}] has duplicate channels"
-                    )
-
-                # If either channel has too much digital silence, warn user
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * checking for silence")
-                silence_ratio_0 = get_silence_ratio(audio[0])
-                silence_ratio_1 = get_silence_ratio(audio[1])
-                if max(silence_ratio_0, silence_ratio_1) >= silence_threshold:
-                    warn(
-                        f"video '{Path(video_path).name}': "
-                        f"[{float(start_ts)} - {end_ts}] contains more than "
-                        f"{int(silence_threshold * 100)}% digital silence"
-                    )
-
-                # Process audio and video
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * transforming audio {str(tuple(audio.shape))}")
-                audio = audio_transform(audio, end).detach().cpu().numpy()
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * transforming video {str(tuple(video.shape))}")
-                video = torch.stack(
-                    [
-                        video_transform(
-                            Image.fromarray(
-                                frame.permute(1, 2, 0).detach().cpu().numpy()
-                            )
+                    audio = audio.to(device=device).transpose(0, 1) # put channels first
+                    # Shape sanity checks
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * audio buffer shape: {audio.shape}")
+                    assert audio.shape[0] == num_channels
+                    # Due to decoding quirks, it seems like we don't necessarily
+                    # get a predictable buffer size, so just warn the user if
+                    # the buffer is bigger than expected
+                    if not (audio.shape[1] <= num_buffer_audio_samples):
+                        logging.info(
+                            f"expected audio shape "
+                            f"({num_channels}, x <= {num_buffer_audio_samples}), "
+                            f"but got {audio.shape}"
                         )
-                        for frame in video
-                    ],
-                    dim=0,
-                ).permute(0, 2, 3, 1).detach().cpu().numpy()
 
-                # Not completely necessary but it feels weird to have this saved
-                # so the channels are in different places, so for video
-                # we'll move channel dim before image dims 
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * restructuring video")
+                    # If both channels are the same, warn user
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * checking for duplicate audio channels")
+                    if torch.allclose(audio[0], audio[1]):
+                        warn(
+                            f"video '{Path(video_path).name}': "
+                            f"[{float(start_ts)} - {end_ts}] has duplicate audio channels"
+                        )
 
-                # Update HDF5
-                # audio.shape (Ta, F, C)
-                # video.shape (Tv, D, D, C)
-                assert audio.shape[1:] == (audio_nfreq, audio_nchan)
-                assert video.shape[1:] == (video_dim, video_dim, video_nchan)
+                    # If either channel has too much digital silence, warn user
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * checking for silence")
+                    silence_ratio_0 = get_silence_ratio(audio[0])
+                    silence_ratio_1 = get_silence_ratio(audio[1])
+                    if max(silence_ratio_0, silence_ratio_1) >= silence_threshold:
+                        warn(
+                            f"video '{Path(video_path).name}': "
+                            f"[{float(start_ts)} - {end_ts}] contains more than "
+                            f"{int(silence_threshold * 100)}% digital silence"
+                        )
 
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * storing audio in hdf5 {str(tuple(audio.shape))}")
-                audio_dataset[audio_frame_idx:audio_frame_idx + audio.shape[0]] = audio
-                if chunk_idx % log_interval == 0:
-                    logging.info(f"        * storing video in hdf5 {str(tuple(video.shape))}")
-                video_dataset[video_frame_idx:video_frame_idx + video.shape[0]] = video
+                    # Process audio
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * transforming audio {str(tuple(audio.shape))}")
+                    audio = audio_transform(audio, end).detach().cpu().numpy()
 
-                audio_frame_idx += audio.shape[0]
-                video_frame_idx += video.shape[0]
+                    # Update HDF5
+                    # audio.shape (Ta, F, C)
+                    assert audio.shape[1:] == (audio_nfreq, audio_nchan)
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * storing audio in hdf5 {str(tuple(audio.shape))}")
+                    audio_dataset[audio_frame_idx:audio_frame_idx + audio.shape[0]] = audio
+                    audio_frame_idx += audio.shape[0]
+
+                # Process video
+                if video is not None:  # account for if there's audio and no video
+                    # Shape sanity checks
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * video buffer shape: {video.shape}")
+                    assert video.shape[1] == video_nchan
+                    if not (video.shape[0] <= num_buffer_video_frames):
+                        logging.info(
+                            f"expected video shape "
+                            f"(x <= {num_buffer_video_frames}, {video_nchan}, :, :), "
+                            f"but got {video.shape}"
+                        )
+
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * transforming video {str(tuple(video.shape))}")
+                    video = torch.stack(
+                        [
+                            video_transform(
+                                Image.fromarray(
+                                    frame.permute(1, 2, 0).detach().cpu().numpy()
+                                )
+                            )
+                            for frame in video
+                        ],
+                        dim=0,
+                    ).permute(0, 2, 3, 1).detach().cpu().numpy()
+
+                    # Not completely necessary but it feels weird to have this saved
+                    # so the channels are in different places, so for video
+                    # we'll move channel dim before image dims 
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * restructuring video")
+
+                    # Update HDF5
+                    # video.shape (Tv, D, D, C)
+                    assert video.shape[1:] == (video_dim, video_dim, video_nchan)
+                    if chunk_idx % log_interval == 0:
+                        logging.info(f"        * storing video in hdf5 {str(tuple(video.shape))}")
+                    video_dataset[video_frame_idx:video_frame_idx + video.shape[0]] = video
+                    video_frame_idx += video.shape[0]
 
         logging.info(f"    - updating metadata")
         metadata = dict(
