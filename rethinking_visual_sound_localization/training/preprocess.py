@@ -10,54 +10,13 @@ from pathlib import Path
 from typing import Optional
 from warnings import warn
 from torchaudio.io import StreamReader
-from ..audio_utils import SpectrogramGcc, get_stream
+from ..audio_utils import (
+    create_spectrogram_coroutine,
+    get_silence_ratio,
+    get_stream,
+    SpectrogramGcc,
+)
 from ..training.data import _transform
-
-
-def get_silence_ratio(signal):
-    # Get overall silence ratio (this is faster, but not exactly what we want)
-    # return (signal == 0).to(dtype=torch.float32).mean()
-
-    # Get the ratio of longest contiguous silence to the whole signal
-    # For simplicity, we're only considering digital silence
-    # https://stackoverflow.com/a/58920786
-    return max(
-        (
-            len([i for i, _ in group])
-            for is_zero, group in groupby(
-                enumerate((signal == 0.0).tolist()),
-                key=itemgetter(1),
-            )
-            if not is_zero
-        ),
-        default=0,
-    ) / float(signal.shape[-1])
-
-
-def get_spectrogram(
-    spec_tf: SpectrogramGcc,
-):
-    """Coroutine for computing a valid spectrogram in chunks"""
-    start = True
-    # Double check this, but it works for the 50% hop case
-    num_invalid_pad = math.ceil(spec_tf._win_size_ms / spec_tf._hop_size_ms) - 1
-    while True:
-        audio, end = (yield)
-        # Get spectrogram, using centering if we're at a boundary
-        spec = spec_tf.forward(audio, center=(start or end), time_first=True)
-        audio = None # help out gc
-        # Ignore boundary frames
-        if start and not end:
-            spec = spec[:-num_invalid_pad]
-            start = False
-        elif end and not start:
-            spec = spec[num_invalid_pad:]
-        yield spec
-        spec = None # help out gc
-
-        # Prevent infinite loops
-        if end:
-            break
 
 
 def preprocess_video(
@@ -88,7 +47,7 @@ def preprocess_video(
     # Set up transforms
     logging.info("    - setting up audio transform")
     spec_tf = SpectrogramGcc(sample_rate, buffer_duration, device=device)
-    spec_coro = get_spectrogram(spec_tf)
+    spec_coro = create_spectrogram_coroutine(spec_tf)
     def audio_transform(audio, last):
         next(spec_coro) # advance coroutine to first yield
         return spec_coro.send((audio, last))

@@ -7,9 +7,12 @@ This script prepares audio features for audio encoders.
 
 from typing import Optional
 
+import math
 import numpy as np
 import torch
 import ffmpeg
+from itertools import groupby
+from operator import itemgetter
 from torchaudio.functional import amplitude_to_DB, melscale_fbanks
 from ffmpeg import Error as FFmpegError
 
@@ -156,6 +159,79 @@ class SpectrogramGcc(torch.nn.Module):
             spectrogram = spectrogram.permute(1, 2, 0)
 
         return spectrogram
+
+
+def get_silence_ratio(signal):
+    # Get overall silence ratio (this is faster, but not exactly what we want)
+    # return (signal == 0).to(dtype=torch.float32).mean()
+
+    # Get the ratio of longest contiguous silence to the whole signal
+    # For simplicity, we're only considering digital silence
+    # https://stackoverflow.com/a/58920786
+    return max(
+        (
+            len([i for i, _ in group])
+            for is_zero, group in groupby(
+                enumerate((signal == 0.0).tolist()),
+                key=itemgetter(1),
+            )
+            if not is_zero
+        ),
+        default=0,
+    ) / float(signal.shape[-1])
+
+
+def get_silence_ratio_spectrogram(spec, db_range=80.0):
+    # Get overall silence ratio (this is faster, but not exactly what we want)
+    # return (spec == 0).to(dtype=torch.float32).mean()
+    # Get the ratio of longest contiguous silence to the whole spectrogram
+    # For simplicity, we're only considering digital silence
+    # https://stackoverflow.com/a/58920786
+
+    # audio.shape (F, Ta)
+    nfreq, ntime = spec.shape
+    spec = spec.permute(1, 0)
+    return max(
+        (
+            len([i for i, _ in group])
+            for is_zero, group in groupby(
+                enumerate(
+                    # Since we're using spectrogram, check that the decibels
+                    # are at the low end of the dynamic range
+                    ((spec <= -db_range).sum(axis=-1) == nfreq).tolist()
+                ),
+                key=itemgetter(1),
+            )
+            if not is_zero
+        ),
+        default=0,
+    ) / float(ntime)
+
+
+def create_spectrogram_coroutine(
+    spec_tf: SpectrogramGcc,
+):
+    """Coroutine for computing a valid spectrogram in chunks"""
+    start = True
+    # Double check this, but it works for the 50% hop case
+    num_invalid_pad = math.ceil(spec_tf._win_size_ms / spec_tf._hop_size_ms) - 1
+    while True:
+        audio, end = (yield)
+        # Get spectrogram, using centering if we're at a boundary
+        spec = spec_tf.forward(audio, center=(start or end), time_first=True)
+        audio = None # help out gc
+        # Ignore boundary frames
+        if start and not end:
+            spec = spec[:-num_invalid_pad]
+            start = False
+        elif end and not start:
+            spec = spec[num_invalid_pad:]
+        yield spec
+        spec = None # help out gc
+
+        # Prevent infinite loops
+        if end:
+            break
 
 
 ########################

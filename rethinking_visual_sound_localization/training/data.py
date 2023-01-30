@@ -3,6 +3,7 @@ import math
 import os
 import random
 
+import ffmpeg
 import h5py
 import librosa
 import numpy as np
@@ -10,9 +11,10 @@ import skvideo.io
 import torch
 from pathlib import Path
 from typing import Optional
-from operator import itemgetter
-from itertools import groupby
+from functools import partial
+from PIL import Image
 from torch.utils.data import IterableDataset
+from torchaudio.io import StreamReader
 from torchaudio.transforms import Spectrogram
 from torchvision.transforms import (
     CenterCrop,
@@ -20,7 +22,12 @@ from torchvision.transforms import (
     Normalize,
     Resize,
     ToTensor,
-    ToPILImage,
+)
+from ..audio_utils import (
+    get_silence_ratio,
+    get_silence_ratio_spectrogram,
+    get_stream,
+    SpectrogramGcc,
 )
 
 
@@ -149,9 +156,9 @@ class AudioVisualDataset(IterableDataset):
                 assert False
 
 
-class Ego4DDataset(IterableDataset):
+class Ego4DHdf5Dataset(IterableDataset):
     """
-        Dataset for loading EGO4D with stereo audio
+        Dataset for loading EGO4D with stereo audio (from HDF5)
     """
 
     def __init__(
@@ -166,7 +173,7 @@ class Ego4DDataset(IterableDataset):
             valid_ratio: float = 0.1,
             silence_threshold: float = 0.1,
     ):
-        super(Ego4DDataset).__init__()
+        super(Ego4DHdf5Dataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
         #       is actually compatible the SAVi AudioCNN. Though we could
         #       do a maxpooling/flatten type of post-processing like with L3
@@ -175,7 +182,6 @@ class Ego4DDataset(IterableDataset):
         self.sample_rate = sample_rate
         self.duration = duration
         self.fps = 30
-        self.transform = _transform(224)
         self.num_channels = num_channels
         self.data_root = Path(data_root)
         self.chunk_duration = chunk_duration
@@ -205,34 +211,6 @@ class Ego4DDataset(IterableDataset):
     def get_video_files(self):
         return sorted([fpath.stem for fpath in self.data_root.glob("*.h5")])
 
-    @staticmethod
-    def get_silence_ratio(signal):
-        # Get overall silence ratio (this is faster, but not exactly what we want)
-        # return (signal == 0).to(dtype=torch.float32).mean()
-
-        # Get the ratio of longest contiguous silence to the whole signal
-        # For simplicity, we're only considering digital silence
-        # https://stackoverflow.com/a/58920786
-        
-
-        # audio.shape (F, Ta)
-        nfreq, ntime = signal.shape
-        signal = signal.permute(1, 0)
-        return max(
-            (
-                len([i for i, _ in group])
-                for is_zero, group in groupby(
-                    enumerate(
-                        # Since we're using spectrogram, check that the decibels
-                        # are at the low end of the dynamic range
-                        ((signal <= -80.0).sum(axis=-1) == nfreq).tolist()
-                    ),
-                    key=itemgetter(1),
-                )
-                if not is_zero
-            ),
-            default=0,
-        ) / float(ntime)
 
     def __iter__(self):
         for f in self.files:
@@ -285,8 +263,8 @@ class Ego4DDataset(IterableDataset):
                             continue
 
                         # If either channel has too much digital silence, skip
-                        silence_ratio_0 = self.get_silence_ratio(audio[0])
-                        silence_ratio_1 = self.get_silence_ratio(audio[1])
+                        silence_ratio_0 = get_silence_ratio_spectrogram(audio[0])
+                        silence_ratio_1 = get_silence_ratio_spectrogram(audio[1])
                         # If the longest silence is more than the threshold, skip
                         if max(silence_ratio_0, silence_ratio_1) >= self.silence_threshold:
                             continue
@@ -306,8 +284,8 @@ class Ego4DDataset(IterableDataset):
                         return
 
                     # If either channel has too much digital silence, skip
-                    silence_ratio_0 = self.get_silence_ratio(audio[0])
-                    silence_ratio_1 = self.get_silence_ratio(audio[1])
+                    silence_ratio_0 = get_silence_ratio_spectrogram(audio[0])
+                    silence_ratio_1 = get_silence_ratio_spectrogram(audio[1])
                     # If the longest silence is more than the threshold, skip
                     if max(silence_ratio_0, silence_ratio_1) >= self.silence_threshold:
                         return
@@ -316,6 +294,259 @@ class Ego4DDataset(IterableDataset):
 
                 else:
                     assert False
+
+
+class Ego4DDataset(IterableDataset):
+    """
+        Dataset for loading EGO4D with stereo audio (from HDF5)
+    """
+
+    def __init__(
+            self,
+            data_root,
+            split: str = "train",
+            duration: int = 5,
+            sample_rate: int = 16000,
+            chunk_duration: Optional[int] = 10,
+            num_channels: int = 2,
+            random_seed: int = 1337,
+            valid_ratio: float = 0.1,
+            silence_threshold: float = 0.1,
+    ):
+        super(Ego4DDataset).__init__()
+        # TODO: Revisit a good value of `duration`, and if the embedding
+        #       is actually compatible the SAVi AudioCNN. Though we could
+        #       do a maxpooling/flatten type of post-processing like with L3
+        assert chunk_duration >= duration
+        assert num_channels == 2
+        self.sample_rate = sample_rate
+        self.duration = duration
+        self.fps = 30
+        self.video_transform = _transform(224)
+        self._spec_tf = SpectrogramGcc(self.sample_rate, self.duration)
+        self.audio_transform = partial(self._spec_tf.forward, center=True, time_first=False)
+        self.num_channels = num_channels
+        self.data_root = Path(data_root)
+        self.chunk_duration = chunk_duration
+        self.split = split
+        self.silence_threshold = silence_threshold
+        self.device = 'cpu'
+        self.num_retry_silence = 3
+        assert self.chunk_duration >= self.duration
+
+        files = self.get_video_files()
+        # Set up splits
+        self.rng = np.random.default_rng(random_seed)
+        self.rng.shuffle(files)
+        num_files = len(files)
+        num_valid = int(num_files * valid_ratio)
+        num_train = num_files - num_valid
+        if split == "train":
+            start_idx = 0
+            end_idx = start_idx + num_train
+        elif split == "valid":
+            start_idx = num_train
+            end_idx = start_idx + num_valid
+        else:
+            assert False
+        self.files = files[start_idx:end_idx]
+        self.ignore_files = set() # keep track of files we can't sample from
+
+    def get_video_filepath(self, video_name):
+        return os.path.join(self.data_root, f"{video_name}.mp4")
+
+    def get_video_files(self):
+        file_list = []
+        for fpath in self.data_root.glob("*.mp4"):
+            metadata = ffmpeg.probe(str(fpath))
+            num_channels = None
+            for stream in metadata["streams"]:
+                if stream["codec_type"] == "audio":
+                    if num_channels is not None:
+                        raise ValueError(
+                            f"Found more than one audio stream for {str(fpath)}"
+                        )
+                    num_channels = int(stream["channels"])
+            if num_channels == self.num_channels:
+                file_list.append(fpath.stem)
+        # Return in sorted order for reproducibility
+        return sorted(file_list)
+
+    def create_stream_reader(self, vfile, num_chunk_audio_samples, num_chunk_video_frames):
+        streamer = StreamReader(vfile)
+        num_channels = streamer.get_src_stream_info(
+            streamer.default_audio_stream
+        ).num_channels
+        assert num_channels == self.num_channels, (
+            f"{vfile.name} must have two audio channels"
+        )
+        # add output streams
+        streamer.add_basic_audio_stream(
+            frames_per_chunk=num_chunk_audio_samples,
+            sample_rate=self.sample_rate,
+            format='fltp',
+            decoder_option={
+                "threads": "1",
+            }
+        )
+        streamer.add_basic_video_stream(
+            frames_per_chunk=num_chunk_video_frames,
+            frame_rate=self.fps,
+            format="rgb24",
+            decoder_option={
+                "threads": "1",
+            }
+        )
+        # Seek to start to avoid ffmpeg decoding in the background
+        # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
+        streamer.seek(0)
+        return streamer
+
+    def sample_offset_ts(self, start_ts, full_duration):
+        # sample a random window within the chunk
+        if (start_ts + self.chunk_duration) <= full_duration:
+            valid_chunk_duration = self.chunk_duration
+        else:
+            # if we have at least a window's worth of samples,
+            # we can still sample a window
+            valid_chunk_duration = full_duration - start_ts
+            assert valid_chunk_duration >= self.duration
+        return self.rng.uniform(0.0, valid_chunk_duration - self.duration)
+
+    def __iter__(self):
+        for f in self.files:
+            if f in self.ignore_files:
+                continue
+            fpath = self.get_video_filepath(f)
+            probe = ffmpeg.probe(fpath)
+            audio_duration = float(get_stream(probe, "audio")["duration"])
+            video_duration = float(get_stream(probe, "video")["duration"])
+            full_duration = max(audio_duration, video_duration)
+            if self.duration <= full_duration:
+                self.ignore_files.add(f)
+                print(
+                    f"WARNING: "
+                    f"video '{Path(fpath).name}' is too short. "
+                    f"Video will be skipped for sampling."
+                )
+                continue
+
+            num_audio_samples = self.duration * self.sample_rate
+            num_video_samples = self.duration * self.fps
+            num_chunk_audio_samples = self.chunk_duration * self.sample_rate
+            num_chunk_video_frames = self.chunk_duration * self.fps
+            num_audio_frames = int(num_audio_samples / (self._spec_tf._hop_size_ms / 1000)) + 1
+
+            with open(fpath, 'rb') as vfile:
+                streamer = self.create_stream_reader(
+                    vfile,
+                    num_chunk_audio_samples,
+                    num_chunk_video_frames
+                )
+                silent = True
+                dupe_channels = True
+                # split video into chunks and sample a window from each
+                for chunk_idx, (audio, video) in enumerate(streamer.stream()):
+                    if audio is None or video is None:
+                        continue
+                    audio = audio.to(device=self.device).transpose(0, 1) # put channels first
+
+                    # Shape sanity checks
+                    assert audio.shape[0] == self.num_channels
+
+                    # Skip chunk if channels are the same
+                    if torch.allclose(audio[0], audio[1]):
+                        print(
+                            f"WARNING: "
+                            f"video '{Path(fpath).name}': "
+                            f"[{float(start_ts)} - {end_ts}] has duplicate "
+                            f"audio channels. Skipping..."
+                        )
+                        dupe_channels = dupe_channels and True
+                        continue
+                    else:
+                        dupe_channels = False
+
+                    chunk_silence_ratio_0 = get_silence_ratio(audio[0])
+                    chunk_silence_ratio_1 = get_silence_ratio(audio[1])
+                    # Skip chunk if it is silent
+                    if torch.isclose(chunk_silence_ratio_0, 1) and torch.isclose(chunk_silence_ratio_1, 1):
+                        print(
+                            f"WARNING: "
+                            f"video '{Path(fpath).name}': "
+                            f"[{float(start_ts)} - {end_ts}] is silent. "
+                            f"Skipping..."
+                        )
+                        silent = silent and True
+                        continue
+                    else:
+                        silent = False
+                    # Warn if above threshold
+                    if max(chunk_silence_ratio_0, chunk_silence_ratio_1) >= self.silence_threshold:
+                        print(
+                            f"WARNING: "
+                            f"video '{Path(fpath).name}': "
+                            f"[{float(start_ts)} - {end_ts}] contains more than "
+                            f"{int(self.silence_threshold * 100)}% digital silence"
+                        )
+                    start_ts = self.chunk_duration * chunk_idx
+                    end_ts = min(start_ts + self.chunk_duration, full_duration)
+
+                    if self.duration > (full_duration - start_ts):
+                        # We don't have enough for a full window, so skip
+                        continue
+
+                    # sample a random window within the chunk
+                    for _ in range(self.num_retry_silence):
+                        # Sample a start time relative to start of the chunk
+                        offset_ts = self.sample_offset_ts(start_ts, full_duration)
+
+                        # Get corresponding indices for audio and video data
+                        audio_index = int(offset_ts * self.sample_rate)
+                        video_index = int(offset_ts * self.fps) + (num_video_samples // 2)
+
+                        silence_ratio = get_silence_ratio(
+                            audio[audio_index:audio_index+num_audio_frames]
+                        )
+                        # Check to make sure sampled slice is not silent
+                        if not torch.isclose(silence_ratio, 1):
+                            audio = audio[audio_index:audio_index+num_audio_frames]
+                            break
+                    else:
+                        print(
+                            f"WARNING: "
+                            f"video '{Path(fpath).name}': "
+                            f"[{float(start_ts)} - {end_ts}] could not be sampled from "
+                            f"in {self.num_retry_silence} attempts. Skipping chunk..."
+                        )
+                        continue
+
+                    # audio.shape (C, F, Ta)
+                    audio = self.audio_transform(audio)
+                    # video.shape (C, D, D)
+                    video = self.video_transform(
+                        Image.fromarray(
+                            video[video_index].permute(1, 2, 0).detach().cpu().numpy()
+                        )
+                    )
+                    yield audio, video
+
+            # Mark files that have issues throughout the whole file as
+            # to be ignored 
+            if silent:
+                self.ignore_files.add(f)
+                print(
+                    f"WARNING: "
+                    f"video '{Path(fpath).name}' is silent. "
+                    f"Video will be skipped for sampling."
+                )
+            if dupe_channels:
+                self.ignore_files.add(f)
+                print(
+                    f"WARNING: "
+                    f"video '{Path(fpath).name}' has duplicate channels. "
+                    f"Video will be skipped for sampling."
+                )
 
 
 def worker_init_fn(worker_id):
