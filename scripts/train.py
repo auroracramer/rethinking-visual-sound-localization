@@ -1,5 +1,6 @@
 import os
 
+import torch
 from pytorch_lightning import seed_everything
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
@@ -19,8 +20,8 @@ if __name__ == "__main__":
     ego = "/vast/work/public/ml-datasets/ego4d/v1/full_scale"
 
     args = {
-        "num_gpus": 1,
-        "batch_size": 512,  # original 256
+        "num_devices": 1,
+        "batch_size": 256,  # original 256
         "learning_rate": 0.001,
         "lr_scheduler_patience": 5,
         "early_stopping_patience": 10,
@@ -90,8 +91,8 @@ if __name__ == "__main__":
                 dirpath=dirpath, filename=filename, monitor="val_loss", save_top_k=-1
             ),
         ],
-        gpus=args["num_gpus"],
-        accelerator="dp",
+        devices=args["num_devices"],
+        accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
         max_epochs=100,
     )
     train_loader = DataLoader(
