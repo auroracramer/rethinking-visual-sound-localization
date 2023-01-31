@@ -426,7 +426,8 @@ class Ego4DDataset(IterableDataset):
                 self.ignore_files.add(f)
                 print(
                     f"WARNING: "
-                    f"video '{Path(fpath).name}' is too short. "
+                    f"video '{Path(fpath).name}' (duration: {full_duration} "
+                    f"seconds) is too short (less than {self.duration} seconds). "
                     f"Video will be skipped for sampling."
                 )
                 continue
