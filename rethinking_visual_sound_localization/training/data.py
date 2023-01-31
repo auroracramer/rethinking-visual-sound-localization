@@ -422,7 +422,7 @@ class Ego4DDataset(IterableDataset):
             audio_duration = float(get_stream(probe, "audio")["duration"])
             video_duration = float(get_stream(probe, "video")["duration"])
             full_duration = max(audio_duration, video_duration)
-            if self.duration <= full_duration:
+            if self.duration > full_duration:
                 self.ignore_files.add(f)
                 print(
                     f"WARNING: "
