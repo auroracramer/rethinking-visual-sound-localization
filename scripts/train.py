@@ -112,7 +112,7 @@ if __name__ == "__main__":
     )
 
     if dataset == ego:
-        rc_grad = RCGradSavi(args, train_dataset.preprocess.feature_shape)
+        rc_grad = RCGradSavi(args, train_dataset.spec_tf.feature_shape)
     elif dataset == vgg:
         rc_grad = RCGrad(args)
     else:

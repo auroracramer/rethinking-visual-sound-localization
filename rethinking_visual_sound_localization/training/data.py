@@ -323,8 +323,8 @@ class Ego4DDataset(IterableDataset):
         self.duration = duration
         self.fps = 30
         self.video_transform = _transform(224)
-        self._spec_tf = SpectrogramGcc(self.sample_rate, self.duration)
-        self.audio_transform = partial(self._spec_tf.forward, center=True, time_first=False)
+        self.spec_tf = SpectrogramGcc(self.sample_rate, self.duration)
+        self.audio_transform = partial(self.spec_tf.forward, center=True, time_first=False)
         self.num_channels = num_channels
         self.data_root = Path(data_root)
         self.chunk_duration = chunk_duration
@@ -435,7 +435,6 @@ class Ego4DDataset(IterableDataset):
             num_video_samples = self.duration * self.fps
             num_chunk_audio_samples = self.chunk_duration * self.sample_rate
             num_chunk_video_frames = self.chunk_duration * self.fps
-            num_audio_frames = int(num_audio_samples / (self._spec_tf._hop_size_ms / 1000)) + 1
 
             with open(fpath, 'rb') as vfile:
                 streamer = self.create_stream_reader(
@@ -449,6 +448,7 @@ class Ego4DDataset(IterableDataset):
                 for chunk_idx, (audio, video) in enumerate(streamer.stream()):
                     if audio is None or video is None:
                         continue
+                    # audio.shape = (C, T)
                     audio = audio.to(device=self.device).transpose(0, 1) # put channels first
 
                     # Shape sanity checks
@@ -467,10 +467,9 @@ class Ego4DDataset(IterableDataset):
                     else:
                         dupe_channels = False
 
-                    chunk_silence_ratio_0 = get_silence_ratio(audio[0])
-                    chunk_silence_ratio_1 = get_silence_ratio(audio[1])
+                    chunk_silence_ratio = max(get_silence_ratio(ch) for ch in audio)
                     # Skip chunk if it is silent
-                    if torch.isclose(chunk_silence_ratio_0, 1) and torch.isclose(chunk_silence_ratio_1, 1):
+                    if torch.isclose(chunk_silence_ratio, 1):
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -482,7 +481,7 @@ class Ego4DDataset(IterableDataset):
                     else:
                         silent = False
                     # Warn if above threshold
-                    if max(chunk_silence_ratio_0, chunk_silence_ratio_1) >= self.silence_threshold:
+                    if chunk_silence_ratio >= self.silence_threshold:
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -505,12 +504,15 @@ class Ego4DDataset(IterableDataset):
                         audio_index = int(offset_ts * self.sample_rate)
                         video_index = int(offset_ts * self.fps) + (num_video_samples // 2)
 
-                        silence_ratio = get_silence_ratio(
-                            audio[audio_index:audio_index+num_audio_frames]
+                        silence_ratio = max(
+                            get_silence_ratio(
+                                ch[audio_index:audio_index+num_audio_samples]
+                            )
+                            for ch in audio
                         )
                         # Check to make sure sampled slice is not silent
                         if not torch.isclose(silence_ratio, 1):
-                            audio = audio[audio_index:audio_index+num_audio_frames]
+                            audio = audio[:, audio_index:audio_index+num_audio_samples]
                             break
                     else:
                         print(
