@@ -36,7 +36,7 @@ class SpectrogramGcc(torch.nn.Module):
     _n_mels = 64
     _include_gcc_phat = True
 
-    def __init__(self, sample_rate, duration, device=None) -> None:
+    def __init__(self, sample_rate, duration, device="cpu") -> None:
         super(SpectrogramGcc, self).__init__()
         self._sample_rate = sample_rate
         self._hop_length = int(self._sample_rate * (self._hop_size_ms / 1000))
