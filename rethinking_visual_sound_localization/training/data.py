@@ -452,6 +452,10 @@ class Ego4DDataset(IterableDataset):
                     # audio.shape = (C, T)
                     audio = audio.to(device=self.device).transpose(0, 1) # put channels first
 
+                    # Get chunk boundaries
+                    start_ts = self.chunk_duration * chunk_idx
+                    end_ts = min(start_ts + self.chunk_duration, full_duration)
+
                     # Shape sanity checks
                     assert audio.shape[0] == self.num_channels
 
@@ -489,8 +493,6 @@ class Ego4DDataset(IterableDataset):
                             f"[{float(start_ts)} - {end_ts}] contains more than "
                             f"{int(self.silence_threshold * 100)}% digital silence"
                         )
-                    start_ts = self.chunk_duration * chunk_idx
-                    end_ts = min(start_ts + self.chunk_duration, full_duration)
 
                     if self.duration > (full_duration - start_ts):
                         # We don't have enough for a full window, so skip
