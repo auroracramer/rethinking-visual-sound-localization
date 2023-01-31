@@ -470,7 +470,7 @@ class Ego4DDataset(IterableDataset):
 
                     chunk_silence_ratio = max(get_silence_ratio(ch) for ch in audio)
                     # Skip chunk if it is silent
-                    if torch.isclose(chunk_silence_ratio, 1):
+                    if np.isclose(chunk_silence_ratio, 1):
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -512,7 +512,7 @@ class Ego4DDataset(IterableDataset):
                             for ch in audio
                         )
                         # Check to make sure sampled slice is not silent
-                        if not torch.isclose(silence_ratio, 1):
+                        if not np.isclose(silence_ratio, 1):
                             audio = audio[:, audio_index:audio_index+num_audio_samples]
                             break
                     else:
