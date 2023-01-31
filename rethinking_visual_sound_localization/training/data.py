@@ -351,6 +351,7 @@ class Ego4DDataset(IterableDataset):
             assert False
         self.files = files[start_idx:end_idx]
         self.ignore_files = set() # keep track of files we can't sample from
+        self.ignore_segments = {fname: set() for fname in self.files}
 
     def get_video_filepath(self, video_name):
         return os.path.join(self.data_root, f"{video_name}.mp4")
@@ -449,6 +450,9 @@ class Ego4DDataset(IterableDataset):
                 for chunk_idx, (audio, video) in enumerate(streamer.stream()):
                     if audio is None or video is None:
                         continue
+                    if chunk_idx in self.ignore_segments[f]:
+                        continue
+
                     # audio.shape = (C, T)
                     audio = audio.to(device=self.device).transpose(0, 1) # put channels first
 
@@ -461,6 +465,7 @@ class Ego4DDataset(IterableDataset):
 
                     # Skip chunk if channels are the same
                     if torch.allclose(audio[0], audio[1]):
+                        self.ignore_segments[f].add(chunk_idx)
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -475,6 +480,7 @@ class Ego4DDataset(IterableDataset):
                     chunk_silence_ratio = max(get_silence_ratio(ch) for ch in audio)
                     # Skip chunk if it is silent
                     if np.isclose(chunk_silence_ratio, 1):
+                        self.ignore_segments[f].add(chunk_idx)
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -540,6 +546,8 @@ class Ego4DDataset(IterableDataset):
             # to be ignored 
             if silent:
                 self.ignore_files.add(f)
+                # Clear the segments if all of the chunks are invalid
+                self.ignore_segments[f] = set()
                 print(
                     f"WARNING: "
                     f"video '{Path(fpath).name}' is silent. "
@@ -547,6 +555,8 @@ class Ego4DDataset(IterableDataset):
                 )
             if dupe_channels:
                 self.ignore_files.add(f)
+                # Clear the segments if all of the chunks are invalid
+                self.ignore_segments[f] = set() 
                 print(
                     f"WARNING: "
                     f"video '{Path(fpath).name}' has duplicate channels. "
