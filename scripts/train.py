@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     args = {
         "num_gpus": 1,
-        "batch_size": 256,  # original 256
+        "batch_size": 512,  # original 256
         "learning_rate": 0.001,
         "lr_scheduler_patience": 5,
         "early_stopping_patience": 10,
