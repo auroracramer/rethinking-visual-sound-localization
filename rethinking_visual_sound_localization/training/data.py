@@ -10,7 +10,7 @@ import numpy as np
 import skvideo.io
 import torch
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Set
 from functools import partial
 from PIL import Image
 from torch.utils.data import IterableDataset
@@ -312,6 +312,9 @@ class Ego4DDataset(IterableDataset):
             random_seed: int = 1337,
             valid_ratio: float = 0.1,
             silence_threshold: float = 0.1,
+            files: Optional[List[str]] = None,
+            ignore_files: Optional[Set[str]] = None,
+            ignore_segments: Optional[Dict[str, Set[int]]] = None,
     ):
         super(Ego4DDataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
@@ -334,24 +337,27 @@ class Ego4DDataset(IterableDataset):
         self.num_retry_silence = 3
         assert self.chunk_duration >= self.duration
 
-        files = self.get_video_files()
-        # Set up splits
-        self.rng = np.random.default_rng(random_seed)
-        self.rng.shuffle(files)
-        num_files = len(files)
-        num_valid = int(num_files * valid_ratio)
-        num_train = num_files - num_valid
-        if split == "train":
-            start_idx = 0
-            end_idx = start_idx + num_train
-        elif split == "valid":
-            start_idx = num_train
-            end_idx = start_idx + num_valid
+        if not files:
+            files = self.get_video_files()
+            # Set up splits
+            self.rng = np.random.default_rng(random_seed)
+            self.rng.shuffle(files)
+            num_files = len(files)
+            num_valid = int(num_files * valid_ratio)
+            num_train = num_files - num_valid
+            if split == "train":
+                start_idx = 0
+                end_idx = start_idx + num_train
+            elif split == "valid":
+                start_idx = num_train
+                end_idx = start_idx + num_valid
+            else:
+                assert False
+            self.files = files[start_idx:end_idx]
         else:
-            assert False
-        self.files = files[start_idx:end_idx]
-        self.ignore_files = set() # keep track of files we can't sample from
-        self.ignore_segments = {fname: set() for fname in self.files}
+            self.files = files
+        self.ignore_files = ignore_files or set() # keep track of files we can't sample from
+        self.ignore_segments = ignore_segments or {fname: set() for fname in self.files}
 
     def get_video_filepath(self, video_name):
         return os.path.join(self.data_root, f"{video_name}.mp4")

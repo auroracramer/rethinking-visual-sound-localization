@@ -1,4 +1,5 @@
 import os
+import pickle as pk
 
 import torch
 from pytorch_lightning import seed_everything
@@ -54,18 +55,53 @@ if __name__ == "__main__":
 
     # assign datasets
     if dataset == ego:
+        train_files_path = os.path.join(project_root, "train_files.pkl")
+        train_ignore_files_path = os.path.join(project_root, "train_ignore_files.pkl")
+        train_ignore_segments_path = os.path.join(project_root, "train_ignore_segments.pkl")
+        valid_files_path = os.path.join(project_root, "valid_files.pkl")
+        valid_ignore_files_path = os.path.join(project_root, "valid_ignore_files.pkl")
+        valid_ignore_segments_path = os.path.join(project_root, "valid_ignore_segments.pkl")
+        with open(train_files_path, "rb") as f:
+            train_files = pk.load(f)
+        with open(train_ignore_files_path, "rb") as f:
+            train_ignore_files = pk.load(f)
+        with open(train_ignore_segments_path, "rb") as f:
+            train_ignore_segments = pk.load(f)
+        # Remove files that are ignored ahead of time
+        train_files = [
+            fname for fname in train_files
+            if fname not in train_ignore_files
+        ]
+        with open(valid_files_path, "rb") as f:
+            valid_files = pk.load(f)
+        with open(valid_ignore_files_path, "rb") as f:
+            valid_ignore_files = pk.load(f)
+        with open(valid_ignore_segments_path, "rb") as f:
+            valid_ignore_segments = pk.load(f)
+        # Remove files that are ignored ahead of time
+        valid_files = [
+            fname for fname in valid_files
+            if fname not in valid_ignore_files
+        ]
+
         # train_dataset =
         train_dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
             split="train",
             duration=5,
             sample_rate=sr,
+            files=train_files,
+            ignore_files=train_ignore_files,
+            ignore_segments=train_ignore_segments,
         )
         val_dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
             sample_rate=sr,
+            files=valid_files,
+            ignore_files=valid_ignore_files,
+            ignore_segments=valid_ignore_segments,
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(
