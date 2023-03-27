@@ -35,12 +35,18 @@ if __name__ == "__main__":
     dataset = args["path_to_data_root"]
     project_root = args["path_to_project_root"]
     os.makedirs(project_root, exist_ok=True)
-    train_files_path = os.path.join(project_root, "train_files.pkl")
-    train_ignore_files_path = os.path.join(project_root, "train_ignore_files.pkl")
-    train_ignore_segments_path = os.path.join(project_root, "train_ignore_segments.pkl")
-    valid_files_path = os.path.join(project_root, "valid_files.pkl")
-    valid_ignore_files_path = os.path.join(project_root, "valid_ignore_files.pkl")
-    valid_ignore_segments_path = os.path.join(project_root, "valid_ignore_segments.pkl")
+    num_jobs = os.environ.get("SLURM_ARRAY_TASK_COUNT")
+    job_idx = os.environ.get("SLURM_ARRAY_TASK_ID")
+
+    mksuff = lambda x: "" if not x else f"_{x}"
+    job_suffix = f"_{job_idx+1}-{num_jobs}" if num_jobs is not None else ""
+
+    train_files_path = os.path.join(project_root, f"train_files{job_suffix}.pkl")
+    train_ignore_files_path = os.path.join(project_root, f"train_ignore_files.{job_suffix}.pkl")
+    train_ignore_segments_path = os.path.join(project_root, f"train_ignore_segments.{job_suffix}.pkl")
+    valid_files_path = os.path.join(project_root, f"valid_files.{job_suffix}.pkl")
+    valid_ignore_files_path = os.path.join(project_root, f"valid_ignore_files.{job_suffix}.pkl")
+    valid_ignore_segments_path = os.path.join(project_root, f"valid_ignore_segments.{job_suffix}.pkl")
 
     # assign datasets
     if dataset == ego:
@@ -50,16 +56,16 @@ if __name__ == "__main__":
             split="train",
             duration=5,
             sample_rate=sr,
-            num_jobs=os.environ.get("SLURM_ARRAY_TASK_COUNT"),
-            job_idx=os.environ.get("SLURM_ARRAY_TASK_ID"),
+            num_jobs=num_jobs,
+            job_idx=job_idx,
         )
         val_dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
             sample_rate=sr,
-            num_jobs=os.environ.get("SLURM_ARRAY_TASK_COUNT"),
-            job_idx=os.environ.get("SLURM_ARRAY_TASK_ID"),
+            num_jobs=num_jobs,
+            job_idx=job_idx,
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(
