@@ -409,16 +409,9 @@ class Ego4DDataset(IterableDataset):
         streamer.seek(0)
         return streamer
 
-    def sample_offset_ts(self, start_ts, full_duration):
-        # sample a random window within the chunk
-        if (start_ts + self.chunk_duration) <= full_duration:
-            valid_chunk_duration = self.chunk_duration
-        else:
-            # if we have at least a window's worth of samples,
-            # we can still sample a window
-            valid_chunk_duration = full_duration - start_ts
-            assert valid_chunk_duration >= self.duration
-        return self.rng.uniform(0.0, valid_chunk_duration - self.duration)
+    def sample_offset_ts(self, start_ts, end_ts):
+        duration = (end_ts - start_ts) - self.duration
+        return self.rng.uniform(0.0, duration)
 
     def __iter__(self):
         for f in self.files:
@@ -527,7 +520,7 @@ class Ego4DDataset(IterableDataset):
                     # sample a random window within the chunk
                     for _ in range(self.num_retry_silence):
                         # Sample a start time relative to start of the chunk
-                        offset_ts = self.sample_offset_ts(start_ts, end_ts - self.duration)
+                        offset_ts = self.sample_offset_ts(start_ts, end_ts)
 
                         # Get corresponding indices for audio and video data
                         audio_index = int(offset_ts * self.sample_rate)
