@@ -175,7 +175,7 @@ def get_silence_ratio(signal):
                 enumerate((signal == 0.0).tolist()),
                 key=itemgetter(1),
             )
-            if not is_zero
+            if is_zero
         ),
         default=0,
     ) / float(signal.shape[-1])
@@ -202,7 +202,7 @@ def get_silence_ratio_spectrogram(spec, db_range=80.0):
                 ),
                 key=itemgetter(1),
             )
-            if not is_zero
+            if is_zero
         ),
         default=0,
     ) / float(ntime)
