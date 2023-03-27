@@ -37,6 +37,8 @@ if __name__ == "__main__":
     os.makedirs(project_root, exist_ok=True)
     num_jobs = os.environ.get("SLURM_ARRAY_TASK_COUNT")
     job_idx = os.environ.get("SLURM_ARRAY_TASK_ID")
+    num_jobs = int(num_jobs) if num_jobs else None
+    job_idx = int(job_idx) if job_idx else None
 
     mksuff = lambda x: "" if not x else f"_{x}"
     job_suffix = f"_{job_idx+1}-{num_jobs}" if num_jobs is not None else ""
