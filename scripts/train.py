@@ -1,5 +1,7 @@
 import os
+import glob
 import pickle as pk
+from pathlib import Path
 
 import torch
 from pytorch_lightning import seed_everything
@@ -46,38 +48,64 @@ if __name__ == "__main__":
 
     sr = int(args["spec_config"]["SAMPLE_RATE"])
     dataset = args["path_to_data_root"]
-    project_root = args["path_to_project_root"]
+    project_root = Path(args["path_to_project_root"])
 
-    os.makedirs(project_root, exist_ok=True)
-    tensorboard_logger = TensorBoardLogger(save_dir="{}/logs/".format(project_root))
-    dirpath = "{}/models/".format(project_root)
+
+    project_root.mkdir(parents=True, exist_ok=True)
+    tensorboard_logger = TensorBoardLogger(save_dir=str(project_root.joinpath("logs/")))
+    dirpath = str(project_root.joinpath("models/"))
     filename = "{epoch}-{val_loss:.4f}"
 
     # assign datasets
     if dataset == ego:
-        train_files_path = os.path.join(project_root, "train_files.pkl")
-        train_ignore_files_path = os.path.join(project_root, "train_ignore_files.pkl")
-        train_ignore_segments_path = os.path.join(project_root, "train_ignore_segments.pkl")
-        valid_files_path = os.path.join(project_root, "valid_files.pkl")
-        valid_ignore_files_path = os.path.join(project_root, "valid_ignore_files.pkl")
-        valid_ignore_segments_path = os.path.join(project_root, "valid_ignore_segments.pkl")
-        with open(train_files_path, "rb") as f:
-            train_files = pk.load(f)
-        with open(train_ignore_files_path, "rb") as f:
-            train_ignore_files = pk.load(f)
-        with open(train_ignore_segments_path, "rb") as f:
-            train_ignore_segments = pk.load(f)
+        train_files = None
+        train_ignore_files = None
+        train_ignore_segments = None
+        for fpath in glob.glob(str(project_root.joinpath("train_files*.pkl"))):
+            with open(fpath, "rb") as f:
+                if train_files:
+                    train_files += pk.load(f)
+                else:
+                    train_files = pk.load(f)
+        for fpath in glob.glob(str(project_root.joinpath("train_ignore_files*.pkl"))):
+            with open(fpath, "rb") as f:
+                if train_ignore_files:
+                    train_ignore_files.update(pk.load(f))
+                else:
+                    train_ignore_files = pk.load(f)
+        for fpath in glob.glob(str(project_root.joinpath("train_ignore_segments*.pkl"))):
+            with open(fpath, "rb") as f:
+                if train_ignore_segments
+                    train_ignore_segments.update(pk.load(f))
+                else:
+                    train_ignore_segments = pk.load(f)
         # Remove files that are ignored ahead of time
         train_files = [
             fname for fname in train_files
             if fname not in train_ignore_files
         ]
-        with open(valid_files_path, "rb") as f:
-            valid_files = pk.load(f)
-        with open(valid_ignore_files_path, "rb") as f:
-            valid_ignore_files = pk.load(f)
-        with open(valid_ignore_segments_path, "rb") as f:
-            valid_ignore_segments = pk.load(f)
+
+        valid_files = None
+        valid_ignore_files = None
+        valid_ignore_segments = None
+        for fpath in glob.glob(str(project_root.joinpath("valid_files*.pkl"))):
+            with open(fpath, "rb") as f:
+                if valid_files:
+                    valid_files += pk.load(f)
+                else:
+                    valid_files = pk.load(f)
+        for fpath in glob.glob(str(project_root.joinpath("valid_ignore_files*.pkl"))):
+            with open(fpath, "rb") as f:
+                if valid_ignore_files:
+                    valid_ignore_files.update(pk.load(f))
+                else:
+                    valid_ignore_files = pk.load(f)
+        for fpath in glob.glob(str(project_root.joinpath("valid_ignore_segments*.pkl"))):
+            with open(fpath, "rb") as f:
+                if valid_ignore_segments
+                    valid_ignore_segments.update(pk.load(f))
+                else:
+                    valid_ignore_segments = pk.load(f)
         # Remove files that are ignored ahead of time
         valid_files = [
             fname for fname in valid_files
