@@ -315,6 +315,8 @@ class Ego4DDataset(IterableDataset):
             files: Optional[List[str]] = None,
             ignore_files: Optional[Set[str]] = None,
             ignore_segments: Optional[Dict[str, Set[int]]] = None,
+            job_idx=None,
+            num_jobs=None,
     ):
         super(Ego4DDataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
@@ -356,6 +358,13 @@ class Ego4DDataset(IterableDataset):
             self.files = files[start_idx:end_idx]
         else:
             self.files = files
+
+        if num_jobs:
+            assert job_idx is not None
+            files_per_job = len(self.files) // num_jobs
+            start_idx = files_per_job * job_idx
+            end_idx = min(start_idx + files_per_job, len(self.files))
+            self.files = files[start_idx:end_idx]
         self.ignore_files = ignore_files or set() # keep track of files we can't sample from
         self.ignore_segments = ignore_segments or {fname: set() for fname in self.files}
 
@@ -467,8 +476,8 @@ class Ego4DDataset(IterableDataset):
                     audio = audio.to(device=self.device).transpose(0, 1) # put channels first
 
                     # Get chunk boundaries
-                    start_ts = self.chunk_duration * chunk_idx
-                    end_ts = min(start_ts + self.chunk_duration, full_duration)
+                    start_ts = float(self.chunk_duration * chunk_idx)
+                    end_ts = float(min(start_ts + self.chunk_duration, full_duration))
 
                     # Shape sanity checks
                     assert audio.shape[0] == self.num_channels

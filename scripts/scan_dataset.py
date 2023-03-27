@@ -50,12 +50,16 @@ if __name__ == "__main__":
             split="train",
             duration=5,
             sample_rate=sr,
+            num_jobs=os.environ.get("SLURM_ARRAY_TASK_COUNT"),
+            job_idx=os.environ.get("SLURM_ARRAY_TASK_ID"),
         )
         val_dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
             sample_rate=sr,
+            num_jobs=os.environ.get("SLURM_ARRAY_TASK_COUNT"),
+            job_idx=os.environ.get("SLURM_ARRAY_TASK_ID"),
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(
