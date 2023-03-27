@@ -444,6 +444,14 @@ class Ego4DDataset(IterableDataset):
             num_chunk_audio_samples = self.chunk_duration * self.sample_rate
             num_chunk_video_frames = self.chunk_duration * self.fps
 
+            num_chunks = 0
+            num_missing_chunks = 0
+            num_silent_chunks = 0
+            num_dupe_chunks = 0
+            num_ignore_chunks = 0
+            num_short_chunks = 0
+            num_failed_chunks = 0
+
             with open(fpath, 'rb') as vfile:
                 streamer = self.create_stream_reader(
                     vfile,
@@ -454,9 +462,12 @@ class Ego4DDataset(IterableDataset):
                 dupe_channels = True
                 # split video into chunks and sample a window from each
                 for chunk_idx, (audio, video) in enumerate(streamer.stream()):
+                    num_chunks += 1
                     if audio is None or video is None:
+                        num_missing_chunks += 1
                         continue
                     if chunk_idx in self.ignore_segments[f]:
+                        num_ignore_chunks += 1
                         continue
 
                     # audio.shape = (C, T)
@@ -471,6 +482,7 @@ class Ego4DDataset(IterableDataset):
 
                     # Skip chunk if channels are the same
                     if torch.allclose(audio[0], audio[1]):
+                        num_dupe_chunks += 1
                         self.ignore_segments[f].add(chunk_idx)
                         print(
                             f"WARNING: "
@@ -486,6 +498,7 @@ class Ego4DDataset(IterableDataset):
                     chunk_silence_ratio = max(get_silence_ratio(ch) for ch in audio)
                     # Skip chunk if it is silent
                     if np.isclose(chunk_silence_ratio, 1):
+                        num_silent_chunks += 1
                         self.ignore_segments[f].add(chunk_idx)
                         print(
                             f"WARNING: "
@@ -506,14 +519,15 @@ class Ego4DDataset(IterableDataset):
                             f"{int(self.silence_threshold * 100)}% digital silence"
                         )
 
-                    if self.duration > (full_duration - start_ts):
+                    if self.duration > (end_ts - start_ts):
                         # We don't have enough for a full window, so skip
+                        num_short_chunks += 1
                         continue
 
                     # sample a random window within the chunk
                     for _ in range(self.num_retry_silence):
                         # Sample a start time relative to start of the chunk
-                        offset_ts = self.sample_offset_ts(start_ts, full_duration)
+                        offset_ts = self.sample_offset_ts(start_ts, end_ts - self.duration)
 
                         # Get corresponding indices for audio and video data
                         audio_index = int(offset_ts * self.sample_rate)
@@ -530,6 +544,7 @@ class Ego4DDataset(IterableDataset):
                             audio = audio[:, audio_index:audio_index+num_audio_samples]
                             break
                     else:
+                        num_failed_chunks += 1
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -547,6 +562,17 @@ class Ego4DDataset(IterableDataset):
                         )
                     )
                     yield audio, video
+
+            print(
+                f"File Chunk Summary: {Path(fpath).name} "
+                f"| total: {num_chunks} "
+                f"| missing: {num_missing_chunks} "
+                f"| silent: {num_silent_chunks} "
+                f"| dupe: {num_dupe_chunks} "
+                f"| ignore: {num_ignore_chunks} "
+                f"| short: {num_short_chunks} "
+                f"| failed: {num_failed_chunks} "
+            )
 
             # Mark files that have issues throughout the whole file as
             # to be ignored 
