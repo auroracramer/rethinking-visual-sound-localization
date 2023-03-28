@@ -340,10 +340,12 @@ class Ego4DDataset(IterableDataset):
         self.num_retry_silence = 3
         assert self.chunk_duration >= self.duration
         self.ignore_files = ignore_files or set() # keep track of files we can't sample from
-        self.ignore_segments = (
-            {k: set(v) for k, v in ignore_segments.items()} if ignore_segments
-            else {fname: set() for fname in self.files}
-        )
+        if ignore_segments is not None:
+            self.ignore_segments = {
+                k: set(v) for k, v in ignore_segments.items()
+            }
+        else:
+            self.ignore_segments = {fname: set() for fname in self.files}
         self.file_stats = file_stats or {}
 
         if split != "full":
