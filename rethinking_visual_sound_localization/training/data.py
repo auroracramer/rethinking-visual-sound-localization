@@ -341,8 +341,8 @@ class Ego4DDataset(IterableDataset):
         assert self.chunk_duration >= self.duration
         self.ignore_files = ignore_files or set() # keep track of files we can't sample from
         self.ignore_segments = (
-            {k: set(v) for k, v in ignore_segments.items()}
-            or {fname: set() for fname in self.files}
+            {k: set(v) for k, v in ignore_segments.items()} if ignore_segments
+            else {fname: set() for fname in self.files}
         )
         self.file_stats = file_stats or {}
 
