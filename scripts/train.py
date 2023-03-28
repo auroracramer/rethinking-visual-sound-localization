@@ -1,6 +1,5 @@
-import os
 import glob
-import pickle as pk
+import json
 from pathlib import Path
 
 import torch
@@ -58,58 +57,31 @@ if __name__ == "__main__":
 
     # assign datasets
     if dataset == ego:
-        train_files = None
-        train_ignore_files = None
-        train_ignore_segments = None
-        for fpath in glob.glob(str(project_root.joinpath("train_files*.pkl"))):
+        files = None
+        ignore_files = None
+        ignore_segments = None
+        for fpath in glob.glob(str(project_root.joinpath("files*.json"))):
             with open(fpath, "rb") as f:
-                if train_files:
-                    train_files += pk.load(f)
+                if files:
+                    files += json.load(f)
                 else:
-                    train_files = pk.load(f)
-        for fpath in glob.glob(str(project_root.joinpath("train_ignore_files*.pkl"))):
+                    files = json.load(f)
+        for fpath in glob.glob(str(project_root.joinpath("ignore_files*.json"))):
             with open(fpath, "rb") as f:
-                if train_ignore_files:
-                    train_ignore_files.update(pk.load(f))
+                if ignore_files:
+                    ignore_files.update(json.load(f))
                 else:
-                    train_ignore_files = pk.load(f)
-        for fpath in glob.glob(str(project_root.joinpath("train_ignore_segments*.pkl"))):
+                    ignore_files = json.load(f)
+        for fpath in glob.glob(str(project_root.joinpath("ignore_segments*.json"))):
             with open(fpath, "rb") as f:
-                if train_ignore_segments
-                    train_ignore_segments.update(pk.load(f))
+                if ignore_segments
+                    ignore_segments.update(json.load(f))
                 else:
-                    train_ignore_segments = pk.load(f)
+                    ignore_segments = json.load(f)
         # Remove files that are ignored ahead of time
-        train_files = [
-            fname for fname in train_files
-            if fname not in train_ignore_files
-        ]
-
-        valid_files = None
-        valid_ignore_files = None
-        valid_ignore_segments = None
-        for fpath in glob.glob(str(project_root.joinpath("valid_files*.pkl"))):
-            with open(fpath, "rb") as f:
-                if valid_files:
-                    valid_files += pk.load(f)
-                else:
-                    valid_files = pk.load(f)
-        for fpath in glob.glob(str(project_root.joinpath("valid_ignore_files*.pkl"))):
-            with open(fpath, "rb") as f:
-                if valid_ignore_files:
-                    valid_ignore_files.update(pk.load(f))
-                else:
-                    valid_ignore_files = pk.load(f)
-        for fpath in glob.glob(str(project_root.joinpath("valid_ignore_segments*.pkl"))):
-            with open(fpath, "rb") as f:
-                if valid_ignore_segments
-                    valid_ignore_segments.update(pk.load(f))
-                else:
-                    valid_ignore_segments = pk.load(f)
-        # Remove files that are ignored ahead of time
-        valid_files = [
-            fname for fname in valid_files
-            if fname not in valid_ignore_files
+        files = [
+            fname for fname in files
+            if fname not in ignore_files
         ]
 
         # train_dataset =
@@ -118,18 +90,18 @@ if __name__ == "__main__":
             split="train",
             duration=5,
             sample_rate=sr,
-            files=train_files,
-            ignore_files=train_ignore_files,
-            ignore_segments=train_ignore_segments,
+            files=files,
+            ignore_files=ignore_files,
+            ignore_segments=ignore_segments,
         )
         val_dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
             sample_rate=sr,
-            files=valid_files,
-            ignore_files=valid_ignore_files,
-            ignore_segments=valid_ignore_segments,
+            files=files,
+            ignore_files=ignore_files,
+            ignore_segments=ignore_segments,
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(

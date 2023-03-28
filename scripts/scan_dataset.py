@@ -1,5 +1,5 @@
 import os
-import pickle as pk
+import json
 
 from pytorch_lightning import seed_everything
 from torch.utils.data import DataLoader
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     ego = "/vast/work/public/ml-datasets/ego4d/v1/full_scale"
 
     args = {
-        "batch_size": 256,  # original 256
+        "batch_size": 1,  # original 256
         "num_workers": 8,  # original 8
         "random_state": 2021,
         "path_to_project_root": "/scratch/jtc440/rethink_ego",
@@ -40,53 +40,36 @@ if __name__ == "__main__":
     num_jobs = int(num_jobs) if num_jobs else None
     job_idx = int(job_idx) if job_idx else None
 
-    mksuff = lambda x: "" if not x else f"_{x}"
     job_suffix = f"_{job_idx+1}-{num_jobs}" if num_jobs is not None else ""
 
-    train_files_path = os.path.join(project_root, f"train_files{job_suffix}.pkl")
-    train_ignore_files_path = os.path.join(project_root, f"train_ignore_files.{job_suffix}.pkl")
-    train_ignore_segments_path = os.path.join(project_root, f"train_ignore_segments.{job_suffix}.pkl")
-    valid_files_path = os.path.join(project_root, f"valid_files.{job_suffix}.pkl")
-    valid_ignore_files_path = os.path.join(project_root, f"valid_ignore_files.{job_suffix}.pkl")
-    valid_ignore_segments_path = os.path.join(project_root, f"valid_ignore_segments.{job_suffix}.pkl")
+    files_path = os.path.join(project_root, f"files{job_suffix}.json")
+    ignore_files_path = os.path.join(project_root, f"ignore_files{job_suffix}.json")
+    ignore_segments_path = os.path.join(project_root, f"ignore_segments{job_suffix}.json")
+    file_stats_path = os.path.join(project_root, f"file_stats{job_suffix}.json")
 
     # assign datasets
     if dataset == ego:
         # train_dataset =
-        train_dataset = Ego4DDataset(
+        dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
-            split="train",
-            duration=5,
-            sample_rate=sr,
-            num_jobs=num_jobs,
-            job_idx=job_idx,
-        )
-        val_dataset = Ego4DDataset(
-            data_root=args['path_to_data_root'],
-            split="valid",
+            split="full",
             duration=5,
             sample_rate=sr,
             num_jobs=num_jobs,
             job_idx=job_idx,
         )
     elif dataset == vgg:
-        train_dataset = AudioVisualDataset(
+        dataset = AudioVisualDataset(
             data_root=args['path_to_data_root'],
-            split="train",
-            duration=5,
-            sample_rate=sr,
-        )
-        val_dataset = AudioVisualDataset(
-            data_root=args['path_to_data_root'],
-            split="valid",
+            split="full",
             duration=5,
             sample_rate=sr,
         )
     else:
         raise Exception("Not Implemented")
 
-    train_loader = DataLoader(
-        train_dataset,
+    dataloader = DataLoader(
+        dataset,
         num_workers=args["num_workers"],
         batch_size=args["batch_size"],
         pin_memory=False,
@@ -94,37 +77,18 @@ if __name__ == "__main__":
         worker_init_fn=worker_init_fn,
     )
     print("- scanning train dataset...")
-    for batch_idx, batch in enumerate(train_loader):
+    for batch_idx, batch in enumerate(dataloader):
         pass
     print(f"   * found {batch_idx + 1} batches")
-    with open(train_files_path, "wb") as f:
-        pk.dump(train_dataset.files, f)
-    print(f"   * saved {train_files_path}")
-    with open(train_ignore_files_path, "wb") as f:
-        pk.dump(train_dataset.ignore_files, f)
-    print(f"   * saved {train_ignore_files_path}")
-    with open(train_ignore_segments_path, "wb") as f:
-        pk.dump(train_dataset.ignore_segments, f)
-    print(f"   * saved {train_ignore_segments_path}")
-
-    valid_loader = DataLoader(
-        val_dataset,
-        num_workers=args["num_workers"],
-        batch_size=args["batch_size"],
-        pin_memory=False,
-        drop_last=False,
-        worker_init_fn=worker_init_fn,
-    )
-    print("- scanning valid dataset...")
-    for batch_idx, batch in enumerate(valid_loader):
-        pass
-    print(f"   * found {batch_idx + 1} batches")
-    with open(valid_files_path, "wb") as f:
-        pk.dump(val_dataset.files, f)
-    print(f"   * saved {valid_files_path}")
-    with open(valid_ignore_files_path, "wb") as f:
-        pk.dump(val_dataset.ignore_files, f)
-    print(f"   * saved {valid_ignore_files_path}")
-    with open(valid_ignore_segments_path, "wb") as f:
-        pk.dump(val_dataset.ignore_segments, f)
-    print(f"   * saved {valid_ignore_segments_path}")
+    with open(files_path, "wb") as f:
+        json.dump(dataset.files, f)
+    print(f"   * saved {files_path}")
+    with open(ignore_files_path, "wb") as f:
+        json.dump(dataset.ignore_files, f)
+    print(f"   * saved {ignore_files_path}")
+    with open(ignore_segments_path, "wb") as f:
+        json.dump(dataset.ignore_segments, f)
+    print(f"   * saved {ignore_segments_path}")
+    with open(file_stats_path, "wb") as f:
+        json.dump(dataset.file_stats, f)
+    print(f"   * saved {file_stats_path}")

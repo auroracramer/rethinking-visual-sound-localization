@@ -10,7 +10,7 @@ import numpy as np
 import skvideo.io
 import torch
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Any
 from functools import partial
 from PIL import Image
 from torch.utils.data import IterableDataset
@@ -315,6 +315,7 @@ class Ego4DDataset(IterableDataset):
             files: Optional[List[str]] = None,
             ignore_files: Optional[Set[str]] = None,
             ignore_segments: Optional[Dict[str, Set[int]]] = None,
+            file_stats: Optional[Dict[str, Any]] = None,
             job_idx=None,
             num_jobs=None,
     ):
@@ -338,9 +339,15 @@ class Ego4DDataset(IterableDataset):
         self.device = 'cpu'
         self.num_retry_silence = 3
         assert self.chunk_duration >= self.duration
+        self.ignore_files = ignore_files or set() # keep track of files we can't sample from
+        self.ignore_segments = (
+            {k: set(v) for k, v in ignore_segments.items()}
+            or {fname: set() for fname in self.files}
+        )
+        self.file_stats = file_stats or {}
 
-        if not files:
-            files = self.get_video_files()
+        if split != "full":
+            files = files or self.get_video_files()
             # Set up splits
             self.rng = np.random.default_rng(random_seed)
             self.rng.shuffle(files)
@@ -356,8 +363,15 @@ class Ego4DDataset(IterableDataset):
             else:
                 assert False
             self.files = files[start_idx:end_idx]
+            self.scan = False
+        elif split == "full" and not files:
+            self.scan = True
+            self.files = self.get_video_files()
+            self.rng = np.random.default_rng(random_seed)
+            self.rng.shuffle(self.files)
         else:
             self.files = files
+            self.scan = False
 
         if num_jobs:
             assert job_idx is not None
@@ -365,8 +379,6 @@ class Ego4DDataset(IterableDataset):
             start_idx = files_per_job * job_idx
             end_idx = min(start_idx + files_per_job, len(self.files))
             self.files = files[start_idx:end_idx]
-        self.ignore_files = ignore_files or set() # keep track of files we can't sample from
-        self.ignore_segments = ignore_segments or {fname: set() for fname in self.files}
 
     def get_video_filepath(self, video_name):
         return os.path.join(self.data_root, f"{video_name}.mp4")
@@ -374,6 +386,8 @@ class Ego4DDataset(IterableDataset):
     def get_video_files(self):
         file_list = []
         for fpath in self.data_root.glob("*.mp4"):
+            if fpath.stem in self.ignore_files:
+                continue
             metadata = ffmpeg.probe(str(fpath))
             num_channels = None
             for stream in metadata["streams"]:
@@ -453,6 +467,7 @@ class Ego4DDataset(IterableDataset):
             num_ignore_chunks = 0
             num_short_chunks = 0
             num_failed_chunks = 0
+            num_valid_chunks = 0
 
             with open(fpath, 'rb') as vfile:
                 streamer = self.create_stream_reader(
@@ -563,18 +578,8 @@ class Ego4DDataset(IterableDataset):
                             video[video_index].permute(1, 2, 0).detach().cpu().numpy()
                         )
                     )
+                    num_valid_chunks += 1
                     yield audio, video
-
-            print(
-                f"File Chunk Summary: {Path(fpath).name} "
-                f"| total: {num_chunks} "
-                f"| missing: {num_missing_chunks} "
-                f"| silent: {num_silent_chunks} "
-                f"| dupe: {num_dupe_chunks} "
-                f"| ignore: {num_ignore_chunks} "
-                f"| short: {num_short_chunks} "
-                f"| failed: {num_failed_chunks} "
-            )
 
             # Mark files that have issues throughout the whole file as
             # to be ignored 
@@ -596,6 +601,32 @@ class Ego4DDataset(IterableDataset):
                     f"video '{Path(fpath).name}' has duplicate channels. "
                     f"Video will be skipped for sampling."
                 )
+            
+            if self.scan:
+                print(
+                    f"File Chunk Summary: {Path(fpath).name} "
+                    f"| total: {num_chunks} "
+                    f"| valid: {num_valid_chunks} "
+                    f"| missing: {num_missing_chunks} "
+                    f"| silent: {num_silent_chunks} "
+                    f"| dupe: {num_dupe_chunks} "
+                    f"| ignore: {num_ignore_chunks} "
+                    f"| short: {num_short_chunks} "
+                    f"| failed: {num_failed_chunks} "
+                )
+                self.file_stats[f] = {
+                    "audio_duration": audio_duration,
+                    "video_duration": video_duration,
+                    "full_duration": full_duration,
+                    "num_chunks": num_chunks,
+                    "num_valid_chunks": num_valid_chunks,
+                    "num_chunks_missing": num_missing_chunks,
+                    "num_chunks_silent": num_silent_chunks,
+                    "num_chunks_dupe": num_dupe_chunks,
+                    "num_chunks_ignore": num_ignore_chunks,
+                    "num_chunks_short": num_short_chunks,
+                    "num_chunks_failed": num_failed_chunks,
+                }
 
 
 def worker_init_fn(worker_id):
@@ -606,5 +637,5 @@ def worker_init_fn(worker_id):
     per_worker = int(math.ceil((len(files)) / float(worker_info.num_workers)))
     worker_id = worker_info.id
     dataset.files = files[
-                    worker_id * per_worker: min(worker_id * per_worker + per_worker, len(files))
-                    ]
+        worker_id * per_worker : min(worker_id * per_worker + per_worker, len(files))
+    ]
