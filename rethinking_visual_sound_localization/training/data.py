@@ -374,7 +374,7 @@ class Ego4DDataset(IterableDataset):
             files_per_job = len(self.files) // num_jobs
             start_idx = files_per_job * job_idx
             end_idx = min(start_idx + files_per_job, len(self.files))
-            self.files = files[start_idx:end_idx]
+            self.files = self.files[start_idx:end_idx]
 
         if ignore_segments is not None:
             self.ignore_segments = {
