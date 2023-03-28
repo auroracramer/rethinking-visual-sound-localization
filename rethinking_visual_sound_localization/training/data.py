@@ -340,12 +340,6 @@ class Ego4DDataset(IterableDataset):
         self.num_retry_silence = 3
         assert self.chunk_duration >= self.duration
         self.ignore_files = ignore_files or set() # keep track of files we can't sample from
-        if ignore_segments is not None:
-            self.ignore_segments = {
-                k: set(v) for k, v in ignore_segments.items()
-            }
-        else:
-            self.ignore_segments = {fname: set() for fname in self.files}
         self.file_stats = file_stats or {}
 
         if split != "full":
@@ -381,6 +375,13 @@ class Ego4DDataset(IterableDataset):
             start_idx = files_per_job * job_idx
             end_idx = min(start_idx + files_per_job, len(self.files))
             self.files = files[start_idx:end_idx]
+
+        if ignore_segments is not None:
+            self.ignore_segments = {
+                k: set(v) for k, v in ignore_segments.items()
+            }
+        else:
+            self.ignore_segments = {fname: set() for fname in self.files}
 
     def get_video_filepath(self, video_name):
         return os.path.join(self.data_root, f"{video_name}.mp4")
