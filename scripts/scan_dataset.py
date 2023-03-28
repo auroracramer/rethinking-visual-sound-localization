@@ -80,15 +80,15 @@ if __name__ == "__main__":
     for batch_idx, batch in enumerate(dataloader):
         pass
     print(f"   * found {batch_idx + 1} batches")
-    with open(files_path, "wb") as f:
+    with open(files_path, "w") as f:
         json.dump(dataset.files, f)
     print(f"   * saved {files_path}")
-    with open(ignore_files_path, "wb") as f:
-        json.dump(dataset.ignore_files, f)
+    with open(ignore_files_path, "w") as f:
+        json.dump(list(dataset.ignore_files), f)
     print(f"   * saved {ignore_files_path}")
-    with open(ignore_segments_path, "wb") as f:
-        json.dump(dataset.ignore_segments, f)
+    with open(ignore_segments_path, "w") as f:
+        json.dump({k: list(v) for k, v in dataset.ignore_segments.items()}, f)
     print(f"   * saved {ignore_segments_path}")
-    with open(file_stats_path, "wb") as f:
+    with open(file_stats_path, "w") as f:
         json.dump(dataset.file_stats, f)
     print(f"   * saved {file_stats_path}")
