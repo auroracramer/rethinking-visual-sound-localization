@@ -89,7 +89,7 @@ if __name__ == "__main__":
         train_dataset,
         num_workers=args["num_workers"],
         batch_size=args["batch_size"],
-        pin_memory=True,
+        pin_memory=False,
         drop_last=False,
         worker_init_fn=worker_init_fn,
     )
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         val_dataset,
         num_workers=args["num_workers"],
         batch_size=args["batch_size"],
-        pin_memory=True,
+        pin_memory=False,
         drop_last=False,
         worker_init_fn=worker_init_fn,
     )
