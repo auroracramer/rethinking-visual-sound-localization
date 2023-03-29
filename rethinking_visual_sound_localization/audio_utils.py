@@ -168,6 +168,9 @@ def get_silence_ratio(signal):
     # Get the ratio of longest contiguous silence to the whole signal
     # For simplicity, we're only considering digital silence
     # https://stackoverflow.com/a/58920786
+    if signal.shape[-1] == 0:
+        # Treat empty signals as fully silent
+        return 1.0
     return max(
         (
             len([i for i, _ in group])
@@ -178,7 +181,7 @@ def get_silence_ratio(signal):
             if is_zero
         ),
         default=0,
-    ) / float(max(signal.shape[-1], 1))
+    ) / float(signal.shape[-1])
 
 
 def get_silence_ratio_spectrogram(spec, db_range=80.0):
