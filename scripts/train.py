@@ -74,7 +74,7 @@ if __name__ == "__main__":
                     ignore_files = json.load(f)
         for fpath in glob.glob(str(project_root.joinpath("ignore_segments*.json"))):
             with open(fpath, "rb") as f:
-                if ignore_segments
+                if ignore_segments:
                     ignore_segments.update(json.load(f))
                 else:
                     ignore_segments = json.load(f)
