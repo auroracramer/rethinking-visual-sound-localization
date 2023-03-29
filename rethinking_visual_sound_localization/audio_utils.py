@@ -178,7 +178,7 @@ def get_silence_ratio(signal):
             if is_zero
         ),
         default=0,
-    ) / float(signal.shape[-1])
+    ) / float(max(signal.shape[-1], 1))
 
 
 def get_silence_ratio_spectrogram(spec, db_range=80.0):
