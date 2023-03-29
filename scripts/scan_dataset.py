@@ -76,7 +76,8 @@ if __name__ == "__main__":
         drop_last=False,
         worker_init_fn=worker_init_fn,
     )
-    print("- scanning train dataset...")
+    print("- scanning dataset...")
+    batch_idx = -1
     for batch_idx, batch in enumerate(dataloader):
         pass
     print(f"   * found {batch_idx + 1} batches")
