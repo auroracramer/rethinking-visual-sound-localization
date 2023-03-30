@@ -127,11 +127,11 @@ class RCGrad(LightningBase):
 
 
 class RCGradSavi(LightningBase):
-    def __init__(self, args, feature_shape):
+    def __init__(self, args, image_feature_shape, audio_feature_shape):
         super().__init__()
         self.args=args
-        self.image_encoder = VisualCNN() #resnet18(modal="vision", pretrained=True)
-        self.audio_encoder = AudioCNN(feature_shape)
+        self.image_encoder = VisualCNN(image_feature_shape) #resnet18(modal="vision", pretrained=True)
+        self.audio_encoder = AudioCNN(audio_feature_shape)
         self.loss_fn = CLIPLoss1D()
 
     def forward(self, audio, image):

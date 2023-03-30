@@ -147,7 +147,7 @@ class VisualCNN(nn.Module):
 
     # NOTE: This isn't fully one to one with Ego4D either because we don't have
     #       any depth information... but what can we do lol
-    def __init__(self):
+    def __init__(self, image_shape=(3, 128, 128)):
         super().__init__()
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
@@ -155,8 +155,8 @@ class VisualCNN(nn.Module):
         # strides for different CNN layers
         self._cnn_layers_stride = [(4, 4), (2, 2), (2, 2)]
 
-        cnn_dims = (128, 128)
-        num_channels = 3
+        cnn_dims = image_shape[1:]
+        num_channels = image_shape[0]
 
         for kernel_size, stride in zip(
             self._cnn_layers_kernel_size, self._cnn_layers_stride

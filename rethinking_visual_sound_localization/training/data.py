@@ -328,7 +328,8 @@ class Ego4DDataset(IterableDataset):
         self.sample_rate = sample_rate
         self.duration = duration
         self.fps = 30
-        self.video_transform = _transform(224)
+        self.video_transform = _transform(128)
+        self.image_feature_shape = (3, 128, 128)
         self.spec_tf = SpectrogramGcc(self.sample_rate, self.duration)
         self.audio_transform = partial(self.spec_tf.forward, center=True, time_first=False)
         self.num_channels = num_channels
