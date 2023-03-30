@@ -50,6 +50,7 @@ if __name__ == "__main__":
             sample_rate=sr,
             num_jobs=num_jobs,
             job_idx=job_idx,
+            project_root=project_root,
         )
     elif dataset == vgg:
         dataset = AudioVisualDataset(
