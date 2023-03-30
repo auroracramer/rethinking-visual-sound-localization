@@ -475,7 +475,7 @@ class Ego4DDataset(IterableDataset):
                     f"seconds) is too short (less than {self.duration} seconds). "
                     f"Video will be skipped for sampling."
                 )
-                with self.project_root.joinpath("video_info", f"{f}.json") as fh:
+                with self.project_root.joinpath("video_info", f"{f}.json").open("w") as fh:
                     json.dump({
                         "too_short": True,
                         "silent": True,
@@ -657,7 +657,7 @@ class Ego4DDataset(IterableDataset):
                     f"| short: {num_short_chunks} "
                     f"| failed: {num_failed_chunks} "
                 )
-                with self.project_root.joinpath("video_info", f"{f}.json") as fh:
+                with self.project_root.joinpath("video_info", f"{f}.json").open("w") as fh:
                     json.dump({
                         "too_short": False,
                         "silent": silent,
