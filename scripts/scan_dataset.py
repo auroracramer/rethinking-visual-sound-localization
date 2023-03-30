@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     args = {
         "batch_size": 1,  # original 256
-        "num_workers": 1,  # original 8
+        "num_workers": 8,  # original 8
         "random_state": 2021,
         "path_to_project_root": "/scratch/jtc440/rethink_ego",
         "path_to_data_root": ego,
