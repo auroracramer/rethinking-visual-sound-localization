@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     args = {
         "batch_size": 1,  # original 256
-        "num_workers": 8,  # original 8
+        "num_workers": 1,  # original 8
         "random_state": 2021,
         "path_to_project_root": "/scratch/jtc440/rethink_ego",
         "path_to_data_root": ego,
@@ -39,13 +39,6 @@ if __name__ == "__main__":
     job_idx = os.environ.get("SLURM_ARRAY_TASK_ID")
     num_jobs = int(num_jobs) if num_jobs else None
     job_idx = int(job_idx) if job_idx else None
-
-    job_suffix = f"_{job_idx+1}-{num_jobs}" if num_jobs is not None else ""
-
-    files_path = os.path.join(project_root, f"files{job_suffix}.json")
-    ignore_files_path = os.path.join(project_root, f"ignore_files{job_suffix}.json")
-    ignore_segments_path = os.path.join(project_root, f"ignore_segments{job_suffix}.json")
-    file_stats_path = os.path.join(project_root, f"file_stats{job_suffix}.json")
 
     # assign datasets
     if dataset == ego:
@@ -81,15 +74,3 @@ if __name__ == "__main__":
     for batch_idx, batch in enumerate(dataloader):
         pass
     print(f"   * found {batch_idx + 1} batches")
-    with open(files_path, "w") as f:
-        json.dump(dataset.files, f)
-    print(f"   * saved {files_path}")
-    with open(ignore_files_path, "w") as f:
-        json.dump(list(dataset.ignore_files), f)
-    print(f"   * saved {ignore_files_path}")
-    with open(ignore_segments_path, "w") as f:
-        json.dump({k: list(v) for k, v in dataset.ignore_segments.items()}, f)
-    print(f"   * saved {ignore_segments_path}")
-    with open(file_stats_path, "w") as f:
-        json.dump(dataset.file_stats, f)
-    print(f"   * saved {file_stats_path}")

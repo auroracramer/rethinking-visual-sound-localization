@@ -2,6 +2,7 @@ import glob
 import math
 import os
 import random
+import json
 
 import ffmpeg
 import h5py
@@ -313,11 +314,10 @@ class Ego4DDataset(IterableDataset):
             valid_ratio: float = 0.1,
             silence_threshold: float = 0.1,
             files: Optional[List[str]] = None,
-            ignore_files: Optional[Set[str]] = None,
-            ignore_segments: Optional[Dict[str, Set[int]]] = None,
-            file_stats: Optional[Dict[str, Any]] = None,
+            file_stats: Optional[Dict[str, Dict[str, Any]]] = None,
             job_idx=None,
             num_jobs=None,
+            project_root: Optional[str] = None,
     ):
         super(Ego4DDataset).__init__()
         # TODO: Revisit a good value of `duration`, and if the embedding
@@ -340,8 +340,23 @@ class Ego4DDataset(IterableDataset):
         self.device = 'cpu'
         self.num_retry_silence = 3
         assert self.chunk_duration >= self.duration
-        self.ignore_files = ignore_files or set() # keep track of files we can't sample from
-        self.file_stats = file_stats or {}
+        self.ignore_files = set()
+        self.ignore_segments = {}
+        if file_stats:
+            for fname, info in file_stats.items():
+                if info["too_short"] or info["silent"] or info["duplicate_channels"]:
+                    self.ignore_files.add(fname)
+                self.ignore_segments[fname] = set(
+                    info["chunk_idxs_silent"]
+                    + info["chunk_idxs_duplicate_channels"] 
+                    + info["chunk_idxs_too_short"]
+                    + info["chunk_idxs_failed"]
+                )
+        if project_root is not None:
+            self.project_root = Path(project_root)
+            self.project_root.joinpath("video_info").mkdir(parents=True, exist_ok=True)
+        else:
+            self.project_root = None
 
         if split != "full":
             files = files or self.get_video_files()
@@ -363,6 +378,7 @@ class Ego4DDataset(IterableDataset):
             self.scan = False
         elif split == "full" and not files:
             self.scan = True
+            assert self.project_root is not None
             self.files = self.get_video_files()
             self.rng = np.random.default_rng(random_seed)
             self.rng.shuffle(self.files)
@@ -377,12 +393,13 @@ class Ego4DDataset(IterableDataset):
             end_idx = min(start_idx + files_per_job, len(self.files))
             self.files = self.files[start_idx:end_idx]
 
-        if ignore_segments is not None:
-            self.ignore_segments = {
-                k: set(v) for k, v in ignore_segments.items()
-            }
-        else:
+        if not self.ignore_segments:
             self.ignore_segments = {fname: set() for fname in self.files}
+        else:
+            # Only include ignore_segments defined in files
+            self.ignore_segments = {fname: self.ignore_segments[fname] for fname in self.files}
+        if self.ignore_files:
+            self.ignore_files = set(fname for fname in self.files if fname in self.ignore_files)
 
     def get_video_filepath(self, video_name):
         return os.path.join(self.data_root, f"{video_name}.mp4")
@@ -450,6 +467,7 @@ class Ego4DDataset(IterableDataset):
             video_duration = float(get_stream(probe, "video")["duration"])
             full_duration = max(audio_duration, video_duration)
             if self.duration > full_duration:
+                # Don't need to add if we're scanning ahead of time
                 self.ignore_files.add(f)
                 print(
                     f"WARNING: "
@@ -457,6 +475,27 @@ class Ego4DDataset(IterableDataset):
                     f"seconds) is too short (less than {self.duration} seconds). "
                     f"Video will be skipped for sampling."
                 )
+                with self.project_root.joinpath("video_info", f"{f}.json") as fh:
+                    json.dump({
+                        "too_short": True,
+                        "silent": True,
+                        "duplicate_channels": True,
+                        "audio_duration": audio_duration,
+                        "video_duration": video_duration,
+                        "full_duration": full_duration,
+                        "num_chunks": 0,
+                        "num_valid_chunks": 0,
+                        "num_chunks_missing": 0,
+                        "num_chunks_silent": 0,
+                        "num_chunks_duplicate_channels": 0,
+                        "num_chunks_ignore": 0,
+                        "num_chunks_short": 0,
+                        "num_chunks_failed": 0,
+                        "chunk_idxs_silent": [],
+                        "chunk_idxs_duplicate_channels": [],
+                        "chunk_idxs_too_short": [],
+                        "chunk_idxs_failed": [],
+                    }, fh)
                 continue
 
             num_audio_samples = self.duration * self.sample_rate
@@ -481,6 +520,10 @@ class Ego4DDataset(IterableDataset):
                 )
                 silent = True
                 dupe_channels = True
+                silent_chunks = set()
+                dupe_chunks = set()
+                too_short_chunks = set()
+                failed_chunks = set()
                 # split video into chunks and sample a window from each
                 for chunk_idx, (audio, video) in enumerate(streamer.stream()):
                     num_chunks += 1
@@ -504,7 +547,7 @@ class Ego4DDataset(IterableDataset):
                     # Skip chunk if channels are the same
                     if torch.allclose(audio[0], audio[1]):
                         num_dupe_chunks += 1
-                        self.ignore_segments[f].add(chunk_idx)
+                        dupe_chunks.add(chunk_idx)
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -520,7 +563,7 @@ class Ego4DDataset(IterableDataset):
                     # Skip chunk if it is silent
                     if np.isclose(chunk_silence_ratio, 1):
                         num_silent_chunks += 1
-                        self.ignore_segments[f].add(chunk_idx)
+                        silent_chunks.add(chunk_idx)
                         print(
                             f"WARNING: "
                             f"video '{Path(fpath).name}': "
@@ -541,6 +584,7 @@ class Ego4DDataset(IterableDataset):
                         )
 
                     if self.duration > (end_ts - start_ts):
+                        too_short_chunks.add(chunk_idx)
                         # We don't have enough for a full window, so skip
                         num_short_chunks += 1
                         continue
@@ -565,6 +609,7 @@ class Ego4DDataset(IterableDataset):
                             audio = audio[:, audio_index:audio_index+num_audio_samples]
                             break
                     else:
+                        failed_chunks.add(chunk_idx)
                         num_failed_chunks += 1
                         print(
                             f"WARNING: "
@@ -588,18 +633,12 @@ class Ego4DDataset(IterableDataset):
             # Mark files that have issues throughout the whole file as
             # to be ignored 
             if silent:
-                self.ignore_files.add(f)
-                # Clear the segments if all of the chunks are invalid
-                self.ignore_segments[f] = set()
                 print(
                     f"WARNING: "
                     f"video '{Path(fpath).name}' is silent. "
                     f"Video will be skipped for sampling."
                 )
             if dupe_channels:
-                self.ignore_files.add(f)
-                # Clear the segments if all of the chunks are invalid
-                self.ignore_segments[f] = set() 
                 print(
                     f"WARNING: "
                     f"video '{Path(fpath).name}' has duplicate channels. "
@@ -618,19 +657,27 @@ class Ego4DDataset(IterableDataset):
                     f"| short: {num_short_chunks} "
                     f"| failed: {num_failed_chunks} "
                 )
-                self.file_stats[f] = {
-                    "audio_duration": audio_duration,
-                    "video_duration": video_duration,
-                    "full_duration": full_duration,
-                    "num_chunks": num_chunks,
-                    "num_valid_chunks": num_valid_chunks,
-                    "num_chunks_missing": num_missing_chunks,
-                    "num_chunks_silent": num_silent_chunks,
-                    "num_chunks_dupe": num_dupe_chunks,
-                    "num_chunks_ignore": num_ignore_chunks,
-                    "num_chunks_short": num_short_chunks,
-                    "num_chunks_failed": num_failed_chunks,
-                }
+                with self.project_root.joinpath("video_info", f"{f}.json") as fh:
+                    json.dump({
+                        "too_short": False,
+                        "silent": silent,
+                        "duplicate_channels": dupe_channels,
+                        "audio_duration": audio_duration,
+                        "video_duration": video_duration,
+                        "full_duration": full_duration,
+                        "num_chunks": num_chunks,
+                        "num_valid_chunks": num_valid_chunks,
+                        "num_chunks_missing": num_missing_chunks,
+                        "num_chunks_silent": num_silent_chunks,
+                        "num_chunks_duplicate_channels": num_dupe_chunks,
+                        "num_chunks_ignore": num_ignore_chunks,
+                        "num_chunks_short": num_short_chunks,
+                        "num_chunks_failed": num_failed_chunks,
+                        "chunk_idxs_silent": list(sorted(silent_chunks)),
+                        "chunk_idxs_duplicate_channels": list(sorted(dupe_chunks)),
+                        "chunk_idxs_too_short": list(sorted(too_short_chunks)),
+                        "chunk_idxs_failed": list(sorted(failed_chunks)),
+                    }, fh)
 
 
 def worker_init_fn(worker_id):

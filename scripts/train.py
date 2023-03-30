@@ -57,32 +57,12 @@ if __name__ == "__main__":
 
     # assign datasets
     if dataset == ego:
-        files = None
-        ignore_files = None
-        ignore_segments = None
-        for fpath in glob.glob(str(project_root.joinpath("files*.json"))):
+        file_stats = {}
+        for fpath in glob.glob(str(project_root.joinpath("video_info", "*.json"))):
+            fname = Path(fpath).stem
             with open(fpath, "rb") as f:
-                if files:
-                    files += json.load(f)
-                else:
-                    files = json.load(f)
-        for fpath in glob.glob(str(project_root.joinpath("ignore_files*.json"))):
-            with open(fpath, "rb") as f:
-                if ignore_files:
-                    ignore_files.update(json.load(f))
-                else:
-                    ignore_files = json.load(f)
-        for fpath in glob.glob(str(project_root.joinpath("ignore_segments*.json"))):
-            with open(fpath, "rb") as f:
-                if ignore_segments:
-                    ignore_segments.update(json.load(f))
-                else:
-                    ignore_segments = json.load(f)
-        # Remove files that are ignored ahead of time
-        files = [
-            fname for fname in files
-            if fname not in ignore_files
-        ]
+                file_stats[fname] = json.load(f)
+        files = list(file_stats.keys()) if file_stats else None
 
         # train_dataset =
         train_dataset = Ego4DDataset(
@@ -91,8 +71,7 @@ if __name__ == "__main__":
             duration=5,
             sample_rate=sr,
             files=files,
-            ignore_files=ignore_files,
-            ignore_segments=ignore_segments,
+            file_stats=file_stats,
         )
         val_dataset = Ego4DDataset(
             data_root=args['path_to_data_root'],
@@ -100,8 +79,7 @@ if __name__ == "__main__":
             duration=5,
             sample_rate=sr,
             files=files,
-            ignore_files=ignore_files,
-            ignore_segments=ignore_segments,
+            file_stats=file_stats,
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(
