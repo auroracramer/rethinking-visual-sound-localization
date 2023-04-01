@@ -697,6 +697,12 @@ def worker_init_fn(worker_id):
     # configure the dataset to only process the split workload
     per_worker = int(math.ceil((len(files)) / float(worker_info.num_workers)))
     worker_id = worker_info.id
-    dataset.files = files[
-        worker_id * per_worker : min(worker_id * per_worker + per_worker, len(files))
-    ]
+    if getattr(dataset, "file_stats", None):
+        fs = dataset.file_stats
+        dataset.files = sorted(
+            dataset.files, key=lambda x: fs[x]["num_valid_chunks"] / fs[x]["num_chunks"]
+        )[worker_id::per_worker]
+    else:
+        dataset.files = files[
+            worker_id * per_worker : min(worker_id * per_worker + per_worker, len(files))
+        ]
