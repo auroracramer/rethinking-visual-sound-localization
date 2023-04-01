@@ -28,7 +28,7 @@ if __name__ == "__main__":
         "lr_scheduler_patience": 5,
         "early_stopping_patience": 10,
         "optimizer": "Adam",
-        "num_workers": 12,  # original 8
+        "num_workers": 16,  # original 8
         "random_state": 2021,
         "args.debug": False,
         "path_to_project_root": "/scratch/jtc440/rethink_ego",
