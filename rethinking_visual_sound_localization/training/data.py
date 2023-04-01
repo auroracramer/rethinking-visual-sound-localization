@@ -585,7 +585,7 @@ class Ego4DDataset(IterableDataset):
                             f"{int(self.silence_threshold * 100)}% digital silence"
                         )
 
-                    if self.duration > (end_ts - start_ts):
+                    if self.duration > (min(end_ts, end_ts_audio) - start_ts):
                         too_short_chunks.add(chunk_idx)
                         # We don't have enough for a full window, so skip
                         num_short_chunks += 1
