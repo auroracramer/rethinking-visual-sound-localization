@@ -475,27 +475,28 @@ class Ego4DDataset(IterableDataset):
                     f"seconds) is too short (less than {self.duration} seconds). "
                     f"Video will be skipped for sampling."
                 )
-                with self.project_root.joinpath("video_info", f"{f}.json").open("w") as fh:
-                    json.dump({
-                        "too_short": True,
-                        "silent": True,
-                        "duplicate_channels": True,
-                        "audio_duration": audio_duration,
-                        "video_duration": video_duration,
-                        "full_duration": full_duration,
-                        "num_chunks": 0,
-                        "num_valid_chunks": 0,
-                        "num_chunks_missing": 0,
-                        "num_chunks_silent": 0,
-                        "num_chunks_duplicate_channels": 0,
-                        "num_chunks_ignore": 0,
-                        "num_chunks_short": 0,
-                        "num_chunks_failed": 0,
-                        "chunk_idxs_silent": [],
-                        "chunk_idxs_duplicate_channels": [],
-                        "chunk_idxs_too_short": [],
-                        "chunk_idxs_failed": [],
-                    }, fh)
+                if self.scan:
+                    with self.project_root.joinpath("video_info", f"{f}.json").open("w") as fh:
+                        json.dump({
+                            "too_short": True,
+                            "silent": True,
+                            "duplicate_channels": True,
+                            "audio_duration": audio_duration,
+                            "video_duration": video_duration,
+                            "full_duration": full_duration,
+                            "num_chunks": 0,
+                            "num_valid_chunks": 0,
+                            "num_chunks_missing": 0,
+                            "num_chunks_silent": 0,
+                            "num_chunks_duplicate_channels": 0,
+                            "num_chunks_ignore": 0,
+                            "num_chunks_short": 0,
+                            "num_chunks_failed": 0,
+                            "chunk_idxs_silent": [],
+                            "chunk_idxs_duplicate_channels": [],
+                            "chunk_idxs_too_short": [],
+                            "chunk_idxs_failed": [],
+                        }, fh)
                 continue
 
             num_audio_samples = self.duration * self.sample_rate
@@ -540,6 +541,7 @@ class Ego4DDataset(IterableDataset):
                     # Get chunk boundaries
                     start_ts = float(self.chunk_duration * chunk_idx)
                     end_ts = float(min(start_ts + self.chunk_duration, full_duration))
+                    end_ts_audio = start_ts + audio.shape[-1] / self.sample_rate
 
                     # Shape sanity checks
                     assert audio.shape[0] == self.num_channels
@@ -591,12 +593,18 @@ class Ego4DDataset(IterableDataset):
 
                     # sample a random window within the chunk
                     for _ in range(self.num_retry_silence):
-                        # Sample a start time relative to start of the chunk
-                        offset_ts = self.sample_offset_ts(start_ts, end_ts)
+                        # Sample a start time relative to start of the chunk (w.r.t audio)
+                        offset_ts = self.sample_offset_ts(start_ts, end_ts_audio)
 
                         # Get corresponding indices for audio and video data
                         audio_index = int(offset_ts * self.sample_rate)
                         video_index = int(offset_ts * self.fps) + (num_video_samples // 2)
+
+                        # Make sure we don't exceed length of chunk audio/video
+                        if audio_index + num_audio_samples > audio.shape[-1]:
+                            continue
+                        if video_index >= video.shape[0]:
+                            continue
 
                         silence_ratio = max(
                             get_silence_ratio(
@@ -604,6 +612,8 @@ class Ego4DDataset(IterableDataset):
                             )
                             for ch in audio
                         )
+
+
                         # Check to make sure sampled slice is not silent
                         if not np.isclose(silence_ratio, 1):
                             audio = audio[:, audio_index:audio_index+num_audio_samples]
