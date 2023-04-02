@@ -16,6 +16,7 @@ from functools import partial
 from PIL import Image
 from torch.utils.data import IterableDataset
 from torchaudio.io import StreamReader
+from torchaudio.utils import ffmpeg_utils
 from torchaudio.transforms import Spectrogram
 from torchvision.transforms import (
     CenterCrop,
@@ -328,8 +329,12 @@ class Ego4DDataset(IterableDataset):
         self.sample_rate = sample_rate
         self.duration = duration
         self.fps = 30
-        self.video_transform = _transform(128)
-        self.image_feature_shape = (3, 128, 128)
+        self.image_dim = 128
+        self.video_transform = Normalize(
+            (0.48145466, 0.4578275, 0.40821073),
+            (0.26862954, 0.26130258, 0.27577711),
+        )
+        self.image_feature_shape = (3, self.image_dim, self.image_dim)
         self.spec_tf = SpectrogramGcc(self.sample_rate, self.duration)
         self.audio_transform = partial(self.spec_tf.forward, center=True, time_first=False)
         self.num_channels = num_channels
@@ -437,16 +442,16 @@ class Ego4DDataset(IterableDataset):
             sample_rate=self.sample_rate,
             format='fltp',
             decoder_option={
-                "threads": "2",
+                "threads": 1,
             }
         )
         streamer.add_basic_video_stream(
             frames_per_chunk=num_chunk_video_frames,
             frame_rate=self.fps,
+            decoder="h624_cuvid",
+            hw_accel="cuda:0",
             format="rgb24",
-            decoder_option={
-                "threads": "2",
-            }
+            filter_desc=f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)', crop={self.image_dim}:{self.image_dim}:exact=1",
         )
         # Seek to start to avoid ffmpeg decoding in the background
         # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
@@ -632,11 +637,7 @@ class Ego4DDataset(IterableDataset):
                     # audio.shape (C, F, Ta)
                     audio = self.audio_transform(audio)
                     # video.shape (C, D, D)
-                    video = self.video_transform(
-                        Image.fromarray(
-                            video[video_index].permute(1, 2, 0).detach().cpu().numpy()
-                        )
-                    )
+                    video = self.video_transform(video[video_index].permute(1, 2, 0))
                     num_valid_chunks += 1
                     yield audio, video
 
