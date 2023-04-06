@@ -437,21 +437,30 @@ class Ego4DDataset(IterableDataset):
             f"{vfile.name} must have two audio channels"
         )
         # add output streams
-        streamer.add_basic_audio_stream(
+        streamer.add_audio_stream(
             frames_per_chunk=num_chunk_audio_samples,
-            sample_rate=self.sample_rate,
-            format='fltp',
             decoder_option={
                 "threads": "1",
             }
+            filter_desc=",".join(
+                [
+                    f"aresample={self.sample_rate}",
+                    f"aformat=sample_fmts=fltp",
+                ]
+            ),
         )
-        streamer.add_basic_video_stream(
+        streamer.add_video_stream(
             frames_per_chunk=num_chunk_video_frames,
-            frame_rate=self.fps,
             decoder="h624_cuvid",
             hw_accel="cuda:0",
-            format="rgb24",
-            filter_desc=f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)', crop={self.image_dim}:{self.image_dim}:exact=1",
+            filter_desc=",".join(
+                [
+                    f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)'",
+                    f"crop={self.image_dim}:{self.image_dim}:exact=1",
+                    f"fps={self.fps}",
+                    f"format=pix_fmts=rgb24",
+                ]
+            ),
         )
         # Seek to start to avoid ffmpeg decoding in the background
         # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
