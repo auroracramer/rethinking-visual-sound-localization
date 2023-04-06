@@ -442,7 +442,7 @@ class Ego4DDataset(IterableDataset):
             sample_rate=self.sample_rate,
             format='fltp',
             decoder_option={
-                "threads": 1,
+                "threads": "1",
             }
         )
         streamer.add_basic_video_stream(
