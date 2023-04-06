@@ -441,7 +441,7 @@ class Ego4DDataset(IterableDataset):
             frames_per_chunk=num_chunk_audio_samples,
             decoder_option={
                 "threads": "1",
-            }
+            },
             filter_desc=",".join(
                 [
                     f"aresample={self.sample_rate}",
