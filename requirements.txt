@@ -1,6 +1,7 @@
 clip @ git+https://github.com/openai/CLIP.git@04f4dc2ca1ed0acc9893bd1a3b526a7e02c4bb10
 ftfy==6.0.3
 grad-cam==1.3.7
+h5py==3.8.0
 librosa==0.8.1
 ffmpeg-python==0.2.0
 numpy>=1.19.2
