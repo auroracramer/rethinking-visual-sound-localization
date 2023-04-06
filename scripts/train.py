@@ -108,6 +108,7 @@ if __name__ == "__main__":
         devices=args["num_devices"],
         accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
         max_epochs=100,
+        auto_select_gpus=True,
     )
     train_loader = DataLoader(
         train_dataset,
