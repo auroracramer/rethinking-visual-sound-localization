@@ -451,7 +451,7 @@ class Ego4DDataset(IterableDataset):
         )
         streamer.add_video_stream(
             frames_per_chunk=num_chunk_video_frames,
-            decoder="h624_cuvid",
+            decoder="h264_cuvid",
             hw_accel="cuda:0",
             filter_desc=",".join(
                 [
