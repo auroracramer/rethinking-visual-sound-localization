@@ -452,7 +452,7 @@ class Ego4DDataset(IterableDataset):
         streamer.add_video_stream(
             frames_per_chunk=num_chunk_video_frames,
             decoder="h264_cuvid",
-            hw_accel="cuda:0",
+            hw_accel=f"cuda:{torch.cuda.current_device()}",
             filter_desc=",".join(
                 [
                     f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)'",
