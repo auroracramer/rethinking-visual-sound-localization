@@ -1,5 +1,6 @@
 import glob
 import json
+import multiprocessing as mp
 from pathlib import Path
 
 import torch
@@ -97,6 +98,8 @@ if __name__ == "__main__":
     else:
         raise Exception("Not Implemented")
 
+    # https://pytorch.org/docs/stable/notes/multiprocessing.html#cuda-in-multiprocessing
+    mp.set_start_method("spawn")
     trainer = Trainer(
         logger=tensorboard_logger,
         callbacks=[
