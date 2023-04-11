@@ -428,7 +428,10 @@ class Ego4DDataset(IterableDataset):
         # Return in sorted order for reproducibility
         return sorted(file_list)
 
-    def create_stream_reader(self, vfile, num_chunk_audio_samples, num_chunk_video_frames):
+    def create_stream_reader(
+        self, vfile, num_chunk_audio_samples,
+        num_chunk_video_frames, video_width, video_height
+    ):
         streamer = StreamReader(vfile)
         num_channels = streamer.get_src_stream_info(
             streamer.default_audio_stream
@@ -454,9 +457,18 @@ class Ego4DDataset(IterableDataset):
         )
         video_decoder = "h264_cuvid"
         video_hw_accel = f"cuda:{torch.cuda.current_device()}"
+        # Determine height in Python to avoid quoted sections
+        # in filter descriptions
+        if video_width > video_height:
+            new_video_width = -1
+            new_video_height = int(self.image_dim)
+        else:
+            new_video_width = int(self.image_dim)
+            new_video_height = -1
+
         video_filter_desc = ",".join(
             [
-                f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)'",
+                f"scale=width={new_video_width}:height={new_video_height}",
                 f"crop={self.image_dim}:{self.image_dim}:exact=1",
                 f"fps={self.fps}",
                 f"format=pix_fmts=rgb24",
@@ -469,7 +481,7 @@ class Ego4DDataset(IterableDataset):
             frames_per_chunk=num_chunk_video_frames,
             decoder=video_decoder,
             hw_accel=video_hw_accel,
-            filter_desc=('"' + video_filter_desc + '"'),
+            filter_desc=video_filter_desc,
         )
         # Seek to start to avoid ffmpeg decoding in the background
         # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
@@ -486,8 +498,12 @@ class Ego4DDataset(IterableDataset):
                 continue
             fpath = self.get_video_filepath(f)
             probe = ffmpeg.probe(fpath)
-            audio_duration = float(get_stream(probe, "audio")["duration"])
-            video_duration = float(get_stream(probe, "video")["duration"])
+            audio_probe = get_stream(probe, "audio")
+            video_probe = get_stream(probe, "video")
+            audio_duration = float(audio_probe["duration"])
+            video_duration = float(video_probe["duration"])
+            video_width = int(video_probe["width"])
+            video_height = int(video_probe["height"])
             full_duration = max(audio_duration, video_duration)
             if self.duration > full_duration:
                 # Don't need to add if we're scanning ahead of time
@@ -540,7 +556,9 @@ class Ego4DDataset(IterableDataset):
                 streamer = self.create_stream_reader(
                     vfile,
                     num_chunk_audio_samples,
-                    num_chunk_video_frames
+                    num_chunk_video_frames,
+                    video_width,
+                    video_height,
                 )
                 silent = True
                 dupe_channels = True
