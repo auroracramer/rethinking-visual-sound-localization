@@ -444,7 +444,7 @@ class Ego4DDataset(IterableDataset):
                 f"aformat=sample_fmts=fltp",
             ]
         )
-        print(f"audio_filter_desc: {audio_filter_desc}")
+        #print(f"audio_filter_desc: {audio_filter_desc}")
         streamer.add_audio_stream(
             frames_per_chunk=num_chunk_audio_samples,
             decoder_option={
@@ -462,14 +462,14 @@ class Ego4DDataset(IterableDataset):
                 f"format=pix_fmts=rgb24",
             ]
         )
-        print(f"video_decoder: {video_decoder}")
-        print(f"video_hw_accel: {video_hw_accel}")
-        print(f"video_filter_desc: {video_filter_desc}")
+        #print(f"video_decoder: {video_decoder}")
+        #print(f"video_hw_accel: {video_hw_accel}")
+        #print(f"video_filter_desc: {video_filter_desc}")
         streamer.add_video_stream(
             frames_per_chunk=num_chunk_video_frames,
             decoder=video_decoder,
             hw_accel=video_hw_accel,
-            filter_desc=video_filter_desc,
+            filter_desc=('"' + video_filter_desc + '"'),
         )
         # Seek to start to avoid ffmpeg decoding in the background
         # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
