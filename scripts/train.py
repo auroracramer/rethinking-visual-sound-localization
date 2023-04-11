@@ -1,7 +1,6 @@
 import glob
 import json
 import multiprocessing as mp
-mp.set_start_method("spawn")
 from pathlib import Path
 
 import torch
@@ -18,6 +17,8 @@ from rethinking_visual_sound_localization.training.data import worker_init_fn
 from rethinking_visual_sound_localization.training.model import RCGrad, RCGradSavi
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
+
     # data source location
     vgg = "/vast/sd5397/data/vggsound/data"
     #ego = "/vast/work/public/ml-datasets/ego4d/v1"
