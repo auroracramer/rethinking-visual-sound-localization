@@ -450,7 +450,7 @@ class Ego4DDataset(IterableDataset):
         #print(f"audio_filter_desc: {audio_filter_desc}")
         streamer.add_audio_stream(
             frames_per_chunk=num_chunk_audio_samples,
-            buffer_chunk_size=num_chunk_audio_samples*3,
+            buffer_chunk_size=5,
             decoder_option={
                 "threads": "1",
             },
@@ -480,7 +480,7 @@ class Ego4DDataset(IterableDataset):
         #print(f"video_filter_desc: {video_filter_desc}")
         streamer.add_video_stream(
             frames_per_chunk=num_chunk_video_frames,
-            buffer_chunk_size=num_chunk_video_frames*3,
+            buffer_chunk_size=5,
             decoder=video_decoder,
             hw_accel=video_hw_accel,
             filter_desc=video_filter_desc,
