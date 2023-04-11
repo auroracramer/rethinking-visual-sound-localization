@@ -430,7 +430,7 @@ class Ego4DDataset(IterableDataset):
 
     def create_stream_reader(
         self, vfile, num_chunk_audio_samples,
-        num_chunk_video_frames, video_width, video_height
+        num_chunk_video_frames, video_width, video_height, video_codec,
     ):
         streamer = StreamReader(vfile)
         num_channels = streamer.get_src_stream_info(
@@ -455,7 +455,7 @@ class Ego4DDataset(IterableDataset):
             },
             filter_desc=audio_filter_desc,
         )
-        video_decoder = "h264_cuvid"
+        video_decoder = f"{video_codec}_cuvid"
         video_hw_accel = f"cuda:{torch.cuda.current_device()}"
         # Determine height in Python to avoid quoted sections
         # in filter descriptions
@@ -504,6 +504,7 @@ class Ego4DDataset(IterableDataset):
             video_duration = float(video_probe["duration"])
             video_width = int(video_probe["width"])
             video_height = int(video_probe["height"])
+            video_codec = video_probe["codec_name"]
             full_duration = max(audio_duration, video_duration)
             if self.duration > full_duration:
                 # Don't need to add if we're scanning ahead of time
@@ -559,6 +560,7 @@ class Ego4DDataset(IterableDataset):
                     num_chunk_video_frames,
                     video_width,
                     video_height,
+                    video_codec,
                 )
                 silent = True
                 dupe_channels = True
