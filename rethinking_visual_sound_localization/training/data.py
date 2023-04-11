@@ -436,31 +436,40 @@ class Ego4DDataset(IterableDataset):
         assert num_channels == self.num_channels, (
             f"{vfile.name} must have two audio channels"
         )
+
         # add output streams
+        audio_filter_desc = ",".join(
+            [
+                f"aresample={self.sample_rate}",
+                f"aformat=sample_fmts=fltp",
+            ]
+        )
+        print(f"audio_filter_desc: {audio_filter_desc}")
         streamer.add_audio_stream(
             frames_per_chunk=num_chunk_audio_samples,
             decoder_option={
                 "threads": "1",
             },
-            filter_desc=",".join(
-                [
-                    f"aresample={self.sample_rate}",
-                    f"aformat=sample_fmts=fltp",
-                ]
-            ),
+            filter_desc=audio_filter_desc,
         )
+        video_decoder = "h264_cuvid"
+        video_hw_accel = f"cuda:{torch.cuda.current_device()}"
+        video_filter_desc = ",".join(
+            [
+                f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)'",
+                f"crop={self.image_dim}:{self.image_dim}:exact=1",
+                f"fps={self.fps}",
+                f"format=pix_fmts=rgb24",
+            ]
+        )
+        print(f"video_decoder: {video_decoder}")
+        print(f"video_hw_accel: {video_hw_accel}")
+        print(f"video_filter_desc: {video_filter_desc}")
         streamer.add_video_stream(
             frames_per_chunk=num_chunk_video_frames,
-            decoder="h264_cuvid",
-            hw_accel=f"cuda:{torch.cuda.current_device()}",
-            filter_desc=",".join(
-                [
-                    f"scale='if(gt(iw,ih),-1,{self.image_dim}):if(gt(iw,ih),{self.image_dim},-1)'",
-                    f"crop={self.image_dim}:{self.image_dim}:exact=1",
-                    f"fps={self.fps}",
-                    f"format=pix_fmts=rgb24",
-                ]
-            ),
+            decoder=video_decoder,
+            hw_accel=video_hw_accel,
+            filter_desc=video_filter_desc,
         )
         # Seek to start to avoid ffmpeg decoding in the background
         # https://github.com/dmlc/decord/issues/208#issuecomment-1157632702
