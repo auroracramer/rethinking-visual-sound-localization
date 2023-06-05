@@ -456,8 +456,12 @@ class Ego4DDataset(IterableDataset):
             },
             filter_desc=audio_filter_desc,
         )
-        video_decoder = f"{video_codec}_cuvid"
-        video_hw_accel = f"cuda:{torch.cuda.current_device()}"
+        if torch.cuda.is_available():
+            video_decoder = f"{video_codec}_cuvid"
+            video_hw_accel = f"cuda:{torch.cuda.current_device()}"
+        else:
+            video_decoder = video_codec
+            video_hw_accel = None
         # Determine height in Python to avoid quoted sections
         # in filter descriptions
         if video_width > video_height:
