@@ -681,7 +681,7 @@ class Ego4DDataset(IterableDataset):
                     # audio.shape (C, F, Ta)
                     audio = self.audio_transform(audio)
                     # video.shape (C, D, D)
-                    video = self.video_transform(video[video_index].permute(1, 2, 0))
+                    video = self.video_transform(video[video_index].permute(1, 2, 0).to(dtype=torch.float))
                     num_valid_chunks += 1
                     yield audio, video
 
