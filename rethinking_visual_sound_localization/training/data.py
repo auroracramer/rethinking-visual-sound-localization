@@ -692,8 +692,8 @@ class Ego4DDataset(IterableDataset):
                     video = self.video_transform(
                         _video_to_float_tensor(
                             video[video_index]
-                        ).permute(1, 2, 0)
-                    )
+                        )
+                    ).permute(1, 2, 0)
                     num_valid_chunks += 1
                     yield audio, video
 
