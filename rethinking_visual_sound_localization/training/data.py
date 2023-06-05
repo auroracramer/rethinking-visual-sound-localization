@@ -298,6 +298,13 @@ class Ego4DHdf5Dataset(IterableDataset):
                     assert False
 
 
+def _video_to_float_tensor(x):
+    if torch.is_floating_point(x):
+        return x
+    else:
+        return x / 255.0
+
+
 class Ego4DDataset(IterableDataset):
     """
         Dataset for loading EGO4D with stereo audio (from HDF5)
@@ -331,14 +338,9 @@ class Ego4DDataset(IterableDataset):
         self.fps = 30
         self.image_dim = 128
 
-        self.video_transform = Compose(
-            [
-                ToTensor(),
-                Normalize(
-                    (0.48145466, 0.4578275, 0.40821073),
-                    (0.26862954, 0.26130258, 0.27577711),
-                ),
-            ]
+        self.video_transform = Normalize(
+            (0.48145466, 0.4578275, 0.40821073),
+            (0.26862954, 0.26130258, 0.27577711),
         )
         self.image_feature_shape = (3, self.image_dim, self.image_dim)
         self.spec_tf = SpectrogramGcc(self.sample_rate, self.duration)
@@ -687,7 +689,11 @@ class Ego4DDataset(IterableDataset):
                     # audio.shape (C, F, Ta)
                     audio = self.audio_transform(audio)
                     # video.shape (C, D, D)
-                    video = self.video_transform(video[video_index].permute(1, 2, 0))
+                    video = self.video_transform(
+                        _video_to_float_tensor(
+                            video[video_index]
+                        ).permute(1, 2, 0)
+                    )
                     num_valid_chunks += 1
                     yield audio, video
 
