@@ -591,7 +591,6 @@ class Ego4DDataset(IterableDataset):
                     # Get chunk boundaries
                     start_ts = float(self.chunk_duration * chunk_idx)
                     end_ts = float(min(start_ts + self.chunk_duration, full_duration))
-                    end_ts_audio = start_ts + audio.shape[-1] / self.sample_rate
 
                     num_chunks += 1
                     # Skip chunk if necessary
@@ -613,6 +612,7 @@ class Ego4DDataset(IterableDataset):
 
                     # audio.shape = (C, T)
                     audio = audio.to(device=self.device).transpose(0, 1) # put channels first
+                    end_ts_audio = start_ts + audio.shape[-1] / self.sample_rate
 
                     # Shape sanity checks
                     assert audio.shape[0] == self.num_channels
