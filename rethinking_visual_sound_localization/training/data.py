@@ -602,7 +602,7 @@ class Ego4DDataset(IterableDataset):
                     # This is done instead of streamer.stream() to avoid
                     # decoding chunks we'll end up skipping
                     streamer.seek(start_ts)
-                    streamer._fill_buffer()
+                    streamer._fill_buffer(timeout=None, backoff=10.0)
                     audio, video = streamer.pop_chunks()
 
                     # Skip chunk if missing audio or video
