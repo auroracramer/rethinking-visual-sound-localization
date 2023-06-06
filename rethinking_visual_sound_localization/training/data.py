@@ -464,12 +464,15 @@ class Ego4DDataset(IterableDataset):
             },
             filter_desc=audio_filter_desc,
         )
-        if torch.cuda.is_available():
-            video_decoder = f"{video_codec}_cuvid"
-            video_hw_accel = f"cuda:{torch.cuda.current_device()}"
-        else:
-            video_decoder = video_codec
-            video_hw_accel = None
+        
+        # FFMPEG cuda stuff is difficult to avoid segfaults
+        # if torch.cuda.is_available():
+        #     video_decoder = f"{video_codec}_cuvid"
+        #     video_hw_accel = f"cuda:{torch.cuda.current_device()}"
+        # else:
+        video_decoder = video_codec
+        video_hw_accel = None
+
         # Determine height in Python to avoid quoted sections
         # in filter descriptions
         if video_width > video_height:
@@ -557,6 +560,7 @@ class Ego4DDataset(IterableDataset):
             num_video_samples = self.duration * self.fps
             num_chunk_audio_samples = self.chunk_duration * self.sample_rate
             num_chunk_video_frames = self.chunk_duration * self.fps
+            num_expected_chunks = int(full_duration / self.chunk_duration)
 
             num_chunks = 0
             num_missing_chunks = 0
@@ -583,22 +587,32 @@ class Ego4DDataset(IterableDataset):
                 too_short_chunks = set()
                 failed_chunks = set()
                 # split video into chunks and sample a window from each
-                for chunk_idx, (audio, video) in enumerate(streamer.stream()):
-                    num_chunks += 1
-                    if audio is None or video is None:
-                        num_missing_chunks += 1
-                        continue
-                    if chunk_idx in self.ignore_segments[f]:
-                        num_ignore_chunks += 1
-                        continue
-
-                    # audio.shape = (C, T)
-                    audio = audio.to(device=self.device).transpose(0, 1) # put channels first
-
+                for chunk_idx in range(num_expected_chunks):
                     # Get chunk boundaries
                     start_ts = float(self.chunk_duration * chunk_idx)
                     end_ts = float(min(start_ts + self.chunk_duration, full_duration))
                     end_ts_audio = start_ts + audio.shape[-1] / self.sample_rate
+
+                    num_chunks += 1
+                    # Skip chunk if necessary
+                    if chunk_idx in self.ignore_segments[f]:
+                        num_ignore_chunks += 1
+                        continue
+
+                    # Seek to the start of each chunk and get audio/video.
+                    # This is done instead of streamer.stream() to avoid
+                    # decoding chunks we'll end up skipping
+                    streamer.seek(start_ts)
+                    streamer.fill_buffer()
+                    audio, video = streamer.pop_chunks()
+
+                    # Skip chunk if missing audio or video
+                    if audio is None or video is None:
+                        num_missing_chunks += 1
+                        continue
+
+                    # audio.shape = (C, T)
+                    audio = audio.to(device=self.device).transpose(0, 1) # put channels first
 
                     # Shape sanity checks
                     assert audio.shape[0] == self.num_channels
