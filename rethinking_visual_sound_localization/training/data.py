@@ -603,6 +603,12 @@ class Ego4DDataset(IterableDataset):
                     # decoding chunks we'll end up skipping
                     streamer.seek(start_ts)
                     streamer._fill_buffer(timeout=None, backoff=10.0)
+
+                    # Skip chunk if no chunk is available
+                    if not streamer.is_buffer_ready():
+                        num_missing_chunks += 1
+                        continue
+
                     audio, video = streamer.pop_chunks()
 
                     # Skip chunk if missing audio or video
@@ -710,6 +716,11 @@ class Ego4DDataset(IterableDataset):
                     ).permute(1, 2, 0)
                     num_valid_chunks += 1
                     yield audio, video
+
+                # Clean up streamer
+                streamer.remove_stream(1)
+                streamer.remove_stream(0)
+                del streamer
 
             # Mark files that have issues throughout the whole file as
             # to be ignored 
