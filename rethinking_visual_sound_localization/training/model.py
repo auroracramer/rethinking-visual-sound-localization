@@ -36,6 +36,10 @@ class CLIPLoss1D(nn.Module):
 
 
 class LightningBase(pl.LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.validation_step_outputs = []
+
     def training_step(self, batch, batch_idx):
         loss = self.step(batch, batch_idx)
         self.log(
@@ -45,11 +49,14 @@ class LightningBase(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         loss = self.step(batch, batch_idx)
-        return {"val_loss": loss}
+        output = {"val_loss": loss}
+        self.validation_step_outputs.append(output)
+        return output
 
-    def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
+    def on_validation_epoch_end(self):
+        avg_loss = torch.stack([x["val_loss"] for x in self.validation_step_outputs]).mean()
         self.log("val_loss", avg_loss, prog_bar=True)
+        self.validation_step_outputs.clear()
         return {
             "avg_val_loss": avg_loss,
             "log": {"val_loss": avg_loss},

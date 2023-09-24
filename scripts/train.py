@@ -1,5 +1,6 @@
 import glob
 import json
+import os
 import multiprocessing as mp
 from pathlib import Path
 
@@ -22,7 +23,7 @@ if __name__ == "__main__":
     # data source location
     vgg = "/vast/sd5397/data/vggsound/data"
     #ego = "/vast/work/public/ml-datasets/ego4d/v1"
-    ego = "/vast/work/public/ml-datasets/ego4d/v1/full_scale"
+    ego = "/home/aurora/datasets/ego4d/v2_50gb/video_540ss"
 
     args = {
         "num_devices": 1,
@@ -34,7 +35,7 @@ if __name__ == "__main__":
         "num_workers": 4,  # original 8
         "random_state": 2021,
         "args.debug": False,
-        "path_to_project_root": "/scratch/jtc440/rethink_ego",
+        "path_to_project_root": "/home/aurora/outputs/rethink_ego",
         "path_to_data_root": ego,
         "spec_config": {
             "STEREO": True,
@@ -65,7 +66,7 @@ if __name__ == "__main__":
             fname = Path(fpath).stem
             with open(fpath, "rb") as f:
                 file_stats[fname] = json.load(f)
-        files = list(file_stats.keys()) if file_stats else None
+        files = [x for x in file_stats.keys() if os.path.exists(os.path.join(args['path_to_data_root'], f"{x}.mp4"))] if file_stats else None
 
         # train_dataset =
         train_dataset = Ego4DDataset(
@@ -112,7 +113,8 @@ if __name__ == "__main__":
         devices=args["num_devices"],
         accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
         max_epochs=100,
-        auto_select_gpus=True,
+        fast_dev_run=True,
+        profiler="advanced",
     )
     train_loader = DataLoader(
         train_dataset,

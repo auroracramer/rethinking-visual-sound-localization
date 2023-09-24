@@ -8,7 +8,6 @@ import ffmpeg
 import h5py
 import librosa
 import numpy as np
-import skvideo.io
 import torch
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
@@ -114,6 +113,7 @@ class AudioVisualDataset(IterableDataset):
         return files
 
     def __iter__(self):
+        import skvideo.io
         for f in self.files:
             # TODO: filter stereo audio here
             audio, _ = librosa.load(
@@ -514,7 +514,11 @@ class Ego4DDataset(IterableDataset):
             if f in self.ignore_files:
                 continue
             fpath = self.get_video_filepath(f)
-            probe = ffmpeg.probe(fpath)
+            try:
+                probe = ffmpeg.probe(fpath)
+            except ffmpeg.Error as e:
+                print(e.stderr)
+                raise e
             audio_probe = get_stream(probe, "audio")
             video_probe = get_stream(probe, "video")
             audio_duration = float(audio_probe["duration"])
@@ -602,7 +606,7 @@ class Ego4DDataset(IterableDataset):
                     # This is done instead of streamer.stream() to avoid
                     # decoding chunks we'll end up skipping
                     streamer.seek(start_ts)
-                    streamer._fill_buffer(timeout=None, backoff=10.0)
+                    streamer.fill_buffer(timeout=None, backoff=10.0)
 
                     # Skip chunk if no chunk is available
                     if not streamer.is_buffer_ready():
@@ -713,7 +717,7 @@ class Ego4DDataset(IterableDataset):
                         _video_to_float_tensor(
                             video[video_index]
                         )
-                    ).permute(1, 2, 0)
+                    )#.permute(1, 2, 0)
                     num_valid_chunks += 1
                     yield audio, video
 
