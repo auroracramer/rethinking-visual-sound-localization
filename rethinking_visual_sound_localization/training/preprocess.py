@@ -124,6 +124,14 @@ def preprocess_video(
             #       estimate for now
             num_chunks = math.ceil(full_duration / buffer_duration)
 
+            num_valid_chunks = 0
+            silent = True
+            identical_audio_channels = True
+            silent_chunks = set()
+            identical_audio_channels_chunks = set()
+            too_short_chunks = set()
+            missing_chunks = set()
+
             audio_frame_idx = 0
             video_frame_idx = 0
             end = False
@@ -154,6 +162,7 @@ def preprocess_video(
                     # get a predictable buffer size, so just warn the user if
                     # the buffer is bigger than expected
                     if not (audio.shape[1] <= num_buffer_audio_samples):
+                        too_short_chunks.add(chunk_idx)
                         logging.info(
                             f"expected audio shape "
                             f"({num_channels}, x <= {num_buffer_audio_samples}), "
@@ -164,10 +173,14 @@ def preprocess_video(
                     if chunk_idx % log_interval == 0:
                         logging.info(f"        * checking for duplicate audio channels")
                     if torch.allclose(audio[0], audio[1]):
+                        identical_audio_channels_chunks.add(chunk_idx)
+                        identical_audio_channels = identical_audio_channels and True
                         warn(
                             f"video '{Path(video_path).name}': "
                             f"[{float(start_ts)} - {end_ts}] has duplicate audio channels"
                         )
+                    else:
+                        identical_audio_channels = False
 
                     # If either channel has too much digital silence, warn user
                     if chunk_idx % log_interval == 0:
@@ -175,11 +188,15 @@ def preprocess_video(
                     silence_ratio_0 = get_silence_ratio(audio[0])
                     silence_ratio_1 = get_silence_ratio(audio[1])
                     if max(silence_ratio_0, silence_ratio_1) >= silence_threshold:
+                        silent_chunks.add(chunk_idx)
+                        silent = silent and True
                         warn(
                             f"video '{Path(video_path).name}': "
                             f"[{float(start_ts)} - {end_ts}] contains more than "
                             f"{int(silence_threshold * 100)}% digital silence"
                         )
+                    else:
+                        silent = False
 
                     # Process audio
                     if chunk_idx % log_interval == 0:
@@ -201,6 +218,7 @@ def preprocess_video(
                         logging.info(f"        * video buffer shape: {video.shape}")
                     assert video.shape[1] == video_nchan
                     if not (video.shape[0] <= num_buffer_video_frames):
+                        too_short_chunks.add(chunk_idx)
                         logging.info(
                             f"expected video shape "
                             f"(x <= {num_buffer_video_frames}, {video_nchan}, :, :), "
@@ -235,6 +253,12 @@ def preprocess_video(
                     video_dataset[video_frame_idx:video_frame_idx + video.shape[0]] = video
                     video_frame_idx += video.shape[0]
 
+                if (not audio) or (not video):
+                    missing_chunks.add(chunk_idx)
+                else:
+                    num_valid_chunks += 1
+                
+
         logging.info(f"    - updating metadata")
         metadata = dict(
             path=str(video_path),
@@ -251,8 +275,19 @@ def preprocess_video(
             video_frame_hop=1.0/fps,
             video_dim=int(video_dim),
             video_nchan=int(video_nchan), # RGB
+            num_chunks=num_chunks,
+            num_valid_chunks=int(num_valid_chunks),
+            silent=bool(silent),
+            identical_audio_channels=bool(identical_audio_channels),
+            silent_chunks=list(silent_chunks),
+            identical_audio_channels_chunks=list(identical_audio_channels_chunks),
+            too_short_chunks=list(too_short_chunks),
+            missing_chunks=list(missing_chunks),
+            num_silent_chunks=len(silent_chunks),
+            num_identical_audio_channels_chunks=len(identical_audio_channels_chunks),
+            num_too_short_chunks=len(too_short_chunks),
+            num_missing_chunks=len(missing_chunks),
         )
-
         for k, v in metadata.items():
             h5.attrs[k] = v
 
