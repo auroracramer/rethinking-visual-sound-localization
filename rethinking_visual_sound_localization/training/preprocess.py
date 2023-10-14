@@ -253,7 +253,7 @@ def preprocess_video(
                     video_dataset[video_frame_idx:video_frame_idx + video.shape[0]] = video
                     video_frame_idx += video.shape[0]
 
-                if (not audio) or (not video):
+                if (audio is None) or (video is None):
                     missing_chunks.add(chunk_idx)
                 else:
                     num_valid_chunks += 1
