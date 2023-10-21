@@ -13,7 +13,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torchsummary import summary
 
-from rethinking_visual_sound_localization.training.data import AudioVisualDataset, Ego4DDataset
+from rethinking_visual_sound_localization.training.data import AudioVisualDataset, Ego4DHdf5Dataset
 from rethinking_visual_sound_localization.training.data import worker_init_fn
 from rethinking_visual_sound_localization.training.model import RCGrad, RCGradSavi
 
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     # data source location
     vgg = "/vast/sd5397/data/vggsound/data"
     #ego = "/vast/work/public/ml-datasets/ego4d/v1"
-    ego = "/home/aurora/datasets/ego4d/v2_50gb/video_540ss"
+    ego = "/mnt/media/AURORA-DATA/ego4d/v2_50gb/video_540ss"
 
     args = {
         "num_devices": 1,
@@ -63,26 +63,20 @@ if __name__ == "__main__":
     if dataset == ego:
         file_stats = {}
         for fpath in glob.glob(str(project_root.joinpath("video_info", "*.json"))):
-            fname = Path(fpath).stem
-            with open(fpath, "rb") as f:
-                file_stats[fname] = json.load(f)
-        files = [x for x in file_stats.keys() if os.path.exists(os.path.join(args['path_to_data_root'], f"{x}.mp4"))] if file_stats else None
 
         # train_dataset =
-        train_dataset = Ego4DDataset(
+        train_dataset = Ego4DHdf5Dataset(
             data_root=args['path_to_data_root'],
             split="train",
             duration=5,
             sample_rate=sr,
-            files=files,
             file_stats=file_stats,
         )
-        val_dataset = Ego4DDataset(
+        val_dataset = Ego4DHdf5Dataset(
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
             sample_rate=sr,
-            files=files,
             file_stats=file_stats,
         )
     elif dataset == vgg:
