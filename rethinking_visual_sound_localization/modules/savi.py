@@ -134,6 +134,7 @@ class AudioCNN(nn.Module):
         return self.cnn(x)
 
 
+
 class VisualCNN(nn.Module):
     r"""A Simple 3-Conv CNN followed by a fully connected layer
 

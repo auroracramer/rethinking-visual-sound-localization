@@ -16,6 +16,7 @@ from torchsummary import summary
 from rethinking_visual_sound_localization.training.data import AudioVisualDataset, Ego4DHdf5Dataset
 from rethinking_visual_sound_localization.training.data import worker_init_fn
 from rethinking_visual_sound_localization.training.model import RCGrad, RCGradSavi
+from rethinking_visual_sound_localization.audio_utils import SpectrogramGcc
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
@@ -23,7 +24,7 @@ if __name__ == "__main__":
     # data source location
     vgg = "/vast/sd5397/data/vggsound/data"
     #ego = "/vast/work/public/ml-datasets/ego4d/v1"
-    ego = "/mnt/media/AURORA-DATA/ego4d/v2_50gb/video_540ss"
+    ego = "/media/aurora/AURORA-DATA/datasets/ego4d/v2_50gb/preprocessed"
 
     args = {
         "num_devices": 1,
@@ -32,7 +33,7 @@ if __name__ == "__main__":
         "lr_scheduler_patience": 5,
         "early_stopping_patience": 10,
         "optimizer": "Adam",
-        "num_workers": 4,  # original 8
+        "num_workers": 24,  # original 8
         "random_state": 2021,
         "args.debug": False,
         "path_to_project_root": "/home/aurora/outputs/rethink_ego",
@@ -61,23 +62,18 @@ if __name__ == "__main__":
 
     # assign datasets
     if dataset == ego:
-        file_stats = {}
-        for fpath in glob.glob(str(project_root.joinpath("video_info", "*.json"))):
-
         # train_dataset =
         train_dataset = Ego4DHdf5Dataset(
             data_root=args['path_to_data_root'],
             split="train",
             duration=5,
             sample_rate=sr,
-            file_stats=file_stats,
         )
         val_dataset = Ego4DHdf5Dataset(
             data_root=args['path_to_data_root'],
             split="valid",
             duration=5,
             sample_rate=sr,
-            file_stats=file_stats,
         )
     elif dataset == vgg:
         train_dataset = AudioVisualDataset(
@@ -107,8 +103,6 @@ if __name__ == "__main__":
         devices=args["num_devices"],
         accelerator=("gpu" if torch.cuda.is_available() else "cpu"),
         max_epochs=100,
-        fast_dev_run=True,
-        profiler="advanced",
     )
     train_loader = DataLoader(
         train_dataset,
@@ -128,10 +122,15 @@ if __name__ == "__main__":
     )
 
     if dataset == ego:
+        spec_tf = SpectrogramGcc(
+            args["spec_config"]["SAMPLE_RATE"],
+            train_dataset.duration,
+            device='cpu'
+        )
         rc_grad = RCGradSavi(
             args,
-            train_dataset.image_feature_shape,
-            train_dataset.spec_tf.feature_shape,
+            (3, 224, 224),
+            spec_tf.feature_shape,
         )
     elif dataset == vgg:
         rc_grad = RCGrad(args)
